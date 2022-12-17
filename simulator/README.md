@@ -1,7 +1,7 @@
 ![Project Logo](./godot/assets/godot-ferris-128x128.png)
 
 # mecha-ferris-simulator
-> Put the description here!
+This is a simulator for the mecha ferris project. It uses the `kinematics` crate to run a model of the robot built in Godot.
 
 ## Table of contents
 * [General Information](#general-information)
@@ -10,7 +10,7 @@
 * [Contact](#contact)
 
 ## General Information
-Put a more general information about your project
+This has been tested with godot version 3.5.1.stable.official.6fed1ffa3 and rust 1.66.
 
 ## Setup
 Setup, installation, configuration, etc. Please read this [wiki](https://github.com/macalimlim/godot-rust-template/wiki) for setting up this template
