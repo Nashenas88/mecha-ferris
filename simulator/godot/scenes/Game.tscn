@@ -1,0 +1,206 @@
+[gd_scene load_steps=13 format=2]
+
+[ext_resource path="res://native/Game.gdns" type="Script" id=1]
+[ext_resource path="res://native/Servo.gdns" type="Script" id=2]
+[ext_resource path="res://scenes/Camera.gd" type="Script" id=3]
+
+[sub_resource type="SpatialMaterial" id=1]
+flags_transparent = true
+albedo_color = Color( 1, 0, 0, 0.784314 )
+
+[sub_resource type="SpatialMaterial" id=2]
+albedo_color = Color( 0.654902, 0.654902, 0.0666667, 1 )
+metallic = 0.95
+metallic_specular = 0.89
+roughness = 0.44
+
+[sub_resource type="SpatialMaterial" id=3]
+albedo_color = Color( 0, 0, 1, 1 )
+
+[sub_resource type="SpatialMaterial" id=4]
+albedo_color = Color( 0, 1, 0, 1 )
+
+[sub_resource type="SpatialMaterial" id=5]
+albedo_color = Color( 1, 1, 0, 1 )
+
+[sub_resource type="SpatialMaterial" id=6]
+albedo_color = Color( 0, 0, 1, 1 )
+
+[sub_resource type="SpatialMaterial" id=7]
+albedo_color = Color( 0, 1, 0, 1 )
+
+[sub_resource type="ProceduralSky" id=9]
+
+[sub_resource type="Environment" id=8]
+background_mode = 2
+background_sky = SubResource( 9 )
+background_color = Color( 0.415686, 0.772549, 0.984314, 1 )
+ambient_light_color = Color( 1, 1, 1, 1 )
+
+[node name="Game" type="Spatial"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, -0.168488, -2.03088, 0.905182 )
+script = ExtResource( 1 )
+step_delay = 10.0
+target = NodePath("Target")
+target_coxa_space = NodePath("TargetCoxaSpace")
+target_femur_space = NodePath("TargetFemurSpace")
+
+[node name="Camera" type="Camera" parent="."]
+transform = Transform( -1.62921e-07, 0, 1, 0, 1, 0, -1, 0, -1.62921e-07, 300, 100, 0 )
+current = true
+far = 1000.0
+script = ExtResource( 3 )
+
+[node name="CSGBox" type="CSGBox" parent="."]
+width = 500.0
+height = 0.1
+depth = 500.0
+material = SubResource( 1 )
+
+[node name="CoxaServo" type="CSGCylinder" parent="."]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 90, 0 )
+radius = 5.0
+height = 20.0
+material = SubResource( 2 )
+script = ExtResource( 2 )
+base/next_servo = NodePath("Spatial/FemurServo")
+base/angular_velocity = 90.0
+
+[node name="CoxaLink" type="CSGCylinder" parent="CoxaServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
+radius = 0.5
+height = 54.5
+material = SubResource( 2 )
+
+[node name="Spatial" type="Spatial" parent="CoxaServo"]
+transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
+
+[node name="FemurServo" type="CSGCylinder" parent="CoxaServo/Spatial"]
+radius = 5.0
+height = 20.0
+material = SubResource( 2 )
+script = ExtResource( 2 )
+base/next_servo = NodePath("Spatial/TibiaServo")
+base/angular_velocity = 135.0
+
+[node name="FemurLink" type="CSGCylinder" parent="CoxaServo/Spatial/FemurServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
+radius = 0.5
+height = 59.5
+material = SubResource( 2 )
+
+[node name="Spatial" type="Spatial" parent="CoxaServo/Spatial/FemurServo"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
+
+[node name="TibiaServo" type="CSGCylinder" parent="CoxaServo/Spatial/FemurServo/Spatial"]
+radius = 5.0
+height = 20.0
+material = SubResource( 2 )
+script = ExtResource( 2 )
+base/angular_velocity = 135.0
+
+[node name="TibiaLink" type="CSGCylinder" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 72 )
+radius = 0.5
+height = 145.0
+material = SubResource( 2 )
+
+[node name="CoxaServoCoxaSpace" type="CSGCylinder" parent="."]
+visible = false
+radius = 5.0
+height = 20.0
+material = SubResource( 3 )
+script = ExtResource( 2 )
+base/next_servo = NodePath("../CoxaServoCoxaSpace/Spatial/FemurServo")
+base/angular_velocity = 90.0
+
+[node name="CoxaLink" type="CSGCylinder" parent="CoxaServoCoxaSpace"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0.255341, -0.623726, 149.807 )
+radius = 0.5
+height = 300.0
+material = SubResource( 3 )
+
+[node name="Spatial" type="Spatial" parent="CoxaServoCoxaSpace"]
+transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
+
+[node name="FemurServo" type="CSGCylinder" parent="CoxaServoCoxaSpace/Spatial"]
+radius = 5.0
+height = 20.0
+material = SubResource( 3 )
+script = ExtResource( 2 )
+base/next_servo = NodePath("../../../CoxaServoCoxaSpace/Spatial/FemurServo/Spatial/TibiaServo")
+base/angular_velocity = 135.0
+
+[node name="FemurLink" type="CSGCylinder" parent="CoxaServoCoxaSpace/Spatial/FemurServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
+radius = 0.5
+height = 59.5
+material = SubResource( 3 )
+
+[node name="Spatial" type="Spatial" parent="CoxaServoCoxaSpace/Spatial/FemurServo"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
+
+[node name="TibiaServo" type="CSGCylinder" parent="CoxaServoCoxaSpace/Spatial/FemurServo/Spatial"]
+radius = 5.0
+height = 20.0
+material = SubResource( 3 )
+script = ExtResource( 2 )
+base/angular_velocity = 135.0
+
+[node name="TibiaLink" type="CSGCylinder" parent="CoxaServoCoxaSpace/Spatial/FemurServo/Spatial/TibiaServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 72 )
+radius = 0.5
+height = 145.0
+material = SubResource( 3 )
+
+[node name="FemurServoFemurSpace" type="CSGCylinder" parent="."]
+visible = false
+radius = 5.0
+height = 20.0
+material = SubResource( 4 )
+script = ExtResource( 2 )
+base/next_servo = NodePath("Spatial/TibiaServo")
+base/angular_velocity = 135.0
+
+[node name="FemurLink" type="CSGCylinder" parent="FemurServoFemurSpace"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
+radius = 0.5
+height = 59.5
+material = SubResource( 4 )
+
+[node name="Spatial" type="Spatial" parent="FemurServoFemurSpace"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
+
+[node name="TibiaServo" type="CSGCylinder" parent="FemurServoFemurSpace/Spatial"]
+radius = 5.0
+height = 20.0
+material = SubResource( 4 )
+script = ExtResource( 2 )
+base/angular_velocity = 135.0
+
+[node name="TibiaLink" type="CSGCylinder" parent="FemurServoFemurSpace/Spatial/TibiaServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 72 )
+radius = 0.5
+height = 145.0
+material = SubResource( 4 )
+
+[node name="Target" type="CSGSphere" parent="."]
+radius = 5.0
+material = SubResource( 5 )
+
+[node name="TargetCoxaSpace" type="CSGSphere" parent="."]
+visible = false
+radius = 5.0
+material = SubResource( 6 )
+
+[node name="TargetFemurSpace" type="CSGSphere" parent="."]
+visible = false
+radius = 5.0
+material = SubResource( 7 )
+
+[node name="DirectionalLight" type="DirectionalLight" parent="."]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 45, 100, 45 )
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource( 8 )

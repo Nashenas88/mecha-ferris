@@ -1,0 +1,17 @@
+[package]
+name = "kinematics"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+nalgebra = { version = "0.31.4", default-features = false, features = ["libm"] }
+defmt = { version = "0.3.2", optional = true }
+
+[dev-dependencies]
+approx = "0.5.1"
+proptest = "1.0.0"
+
+[features]
+default = []

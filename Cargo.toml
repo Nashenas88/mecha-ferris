@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "kinematics",
+    "mecha-ferris",
+    "simulator/rust",
+]
