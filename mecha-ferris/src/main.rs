@@ -6,7 +6,7 @@ use defmt::Format;
 use defmt_rtt as _;
 use embedded_hal::timer::CountDown;
 use fugit::ExtU64;
-use kinematics::{ComplexField, Leg, Point3};
+use kinematics::{ComplexField, ExpensiveMath, Leg, Point3};
 use mecha_ferris::analog_mux::{AnalogMux, CurrentSensor};
 use mecha_ferris::flexible_input::FlexibleInput;
 use panic_probe as _;
@@ -24,6 +24,8 @@ use servo_pio::servo_cluster::{
 use smart_leds::{brightness, SmartLedsWrite, RGB8};
 use ws2812_pio::Ws2812Direct;
 
+use pimoroni_servo2040::hal::rom_data::float_funcs;
+
 const LED_BRIGHTNESS: u8 = 16;
 const NUM_SERVOS: usize = 3;
 const NUM_CHANNELS: usize = 12;
@@ -38,6 +40,49 @@ static mut GLOBALS: GlobalStates<NUM_CHANNELS> = {
     }
 };
 const SAMPLES: usize = 10;
+
+struct RomFuncs;
+impl ExpensiveMath<f32> for RomFuncs {
+    #[inline(always)]
+    fn atan2(l: f32, r: f32) -> f32 {
+        float_funcs::fatan2(l, r)
+    }
+
+    fn acos(f: f32) -> f32 {
+        // Handbook of Mathematical Functions
+        // M. Abramowitz and I.A. Stegun, Ed.
+
+        // Absolute error <= 6.7e-5
+        let negate = (f < 0.0) as u8 as f32;
+        let f = f32::abs(f);
+        let ret = -0.0187293 * f
+            + 0.0742610 * f
+            + -0.2121144 * f
+            + 1.5707288 * float_funcs::fsqrt(1.0 - f);
+        negate * core::f32::consts::PI + ret + -2.0 * negate * ret
+    }
+
+    #[inline(always)]
+    fn sin(f: f32) -> f32 {
+        float_funcs::fsin(f)
+    }
+
+    #[inline(always)]
+    fn cos(f: f32) -> f32 {
+        float_funcs::fcos(f)
+    }
+
+    #[inline(always)]
+    fn sincos(f: f32) -> (f32, f32) {
+        (Self::sin(f), Self::cos(f))
+        // float_funcs::fsincos(f)
+    }
+
+    #[inline(always)]
+    fn sqrt(f: f32) -> f32 {
+        float_funcs::fsqrt(f)
+    }
+}
 
 #[pimoroni_servo2040::entry]
 fn main() -> ! {
@@ -117,17 +162,29 @@ fn main() -> ! {
         ServoData {
             pin: pins.servo5.into_mode::<FunctionPio0>().into(),
             calibration: Calibration::builder(AngularCalibration::new(
+                // Point {
+                //     pulse: 2423.0,
+                //     value: 0.0,
+                // },
+                // Point {
+                //     pulse: 1538.0,
+                //     value: 90.0,
+                // },
+                // Point {
+                //     pulse: 900.0,
+                //     value: 180.0,
+                // },
                 Point {
-                    pulse: 2423.0,
-                    value: 0.0,
+                    pulse: 2283.0,
+                    value: 20.0,
                 },
                 Point {
-                    pulse: 1538.0,
+                    pulse: 1551.0,
                     value: 90.0,
                 },
                 Point {
-                    pulse: 900.0,
-                    value: 180.0,
+                    pulse: 820.0,
+                    value: 170.0,
                 },
             ))
             .limit_lower()
@@ -153,7 +210,7 @@ fn main() -> ! {
         clocks.peripheral_clock.freq(),
     );
 
-    let mut leg: Leg = Leg::new();
+    let mut leg: Leg<f32, RomFuncs> = Leg::default();
 
     let mut servo_cluster = match build_servo_cluster(
         &mut pio0,
@@ -205,7 +262,7 @@ fn main() -> ! {
     }
 
     let mut time = 0.0;
-    let step_delay = 0.25;
+    let step_delay = 2.0;
 
     let mut now = timer.get_counter();
 
@@ -217,12 +274,23 @@ fn main() -> ! {
             time = 0.0;
         }
         let circle_angle = time / step_delay * 2.0 * core::f32::consts::PI;
-        let target = point_on_circle(0.0, 150.0, 25.0, circle_angle as f32);
+        // let target = point_on_circle(0.0, -150.0, 178.0, 40.0, circle_angle);
+        let target = point_on_line(0.0, -150.0, 178.0, 90.0, circle_angle);
         match leg.go_to(target) {
             Ok(()) => {
                 let coxa_servo_angle = rad_to_deg(leg.coxa_servo_angle());
                 let femur_servo_angle = rad_to_deg(leg.femur_servo_angle());
                 let tibia_servo_angle = rad_to_deg(leg.tibia_servo_angle());
+                // TODO removing this line causes faults to start triggering on the real hardware.
+                // I wonder if removing this causes the LED's to be written to too quickly, or
+                // if it's a problem with updating the servo data too quickly (maybe bug in DMA
+                // mapping).
+                defmt::info!(
+                    "Moving to ({}, {}, {})",
+                    coxa_servo_angle,
+                    femur_servo_angle,
+                    tibia_servo_angle
+                );
                 servo_cluster.set_value(servo1, tibia_servo_angle, false);
                 servo_cluster.set_value(servo2, femur_servo_angle, false);
                 servo_cluster.set_value(servo3, coxa_servo_angle, false);
@@ -262,8 +330,14 @@ fn main() -> ! {
     }
 }
 
-fn point_on_circle(z: f32, x: f32, radius: f32, angle: f32) -> Point3<f32> {
-    Point3::new(x + radius * angle.sin(), 0.0, z + radius * angle.cos())
+#[allow(dead_code)]
+fn point_on_circle(z: f32, y: f32, x: f32, radius: f32, angle: f32) -> Point3<f32> {
+    Point3::new(x + radius * angle.sin(), y, z + radius * angle.cos())
+}
+
+#[allow(dead_code)]
+fn point_on_line(z: f32, y: f32, x: f32, length: f32, t: f32) -> Point3<f32> {
+    Point3::new(x, y, z + length * t.cos())
 }
 
 fn rad_to_deg(rad: f32) -> f32 {

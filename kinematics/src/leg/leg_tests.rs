@@ -1,6 +1,6 @@
 use super::*;
 use approx::{assert_relative_eq, AbsDiffEq, RelativeEq};
-use proptest::proptest;
+use proptest::test_runner::TestRunner;
 
 struct TestConsts;
 impl LegConsts for TestConsts {
@@ -43,8 +43,8 @@ impl RelativeEq for LegError {
         match (self, other) {
             (LegError::TooFar(l1, l2), LegError::TooFar(r1, r2))
             | (LegError::TooClose(l1, l2), LegError::TooClose(r1, r2)) => {
-                <f32 as RelativeEq>::relative_eq(&l1, &r1, epsilon, max_relative)
-                    && <f32 as RelativeEq>::relative_eq(&l2, &r2, epsilon, max_relative)
+                <f32 as RelativeEq>::relative_eq(l1, r1, epsilon, max_relative)
+                    && <f32 as RelativeEq>::relative_eq(l2, r2, epsilon, max_relative)
             }
             (LegError::NonFiniteCalculation, LegError::NonFiniteCalculation) => true,
             _ => false,
@@ -85,5 +85,7 @@ fn go_to_point() {
 
 #[test]
 fn test_reachable() {
-    let mut runner = TestRunner::default();
+    let mut _runner = TestRunner::default();
+    // TODO use proptest to generate point within workspace
+    // validate leg can reach that point
 }

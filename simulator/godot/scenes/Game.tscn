@@ -100,9 +100,9 @@ script = ExtResource( 2 )
 base/angular_velocity = 135.0
 
 [node name="TibiaLink" type="CSGCylinder" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 72 )
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 87 )
 radius = 0.5
-height = 145.0
+height = 175.0
 material = SubResource( 2 )
 
 [node name="CoxaServoCoxaSpace" type="CSGCylinder" parent="."]

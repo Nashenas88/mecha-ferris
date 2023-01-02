@@ -1,6 +1,7 @@
+mod animation;
 mod game;
-// mod multi_leg;
 mod servo;
+mod walker;
 
 use gdnative::prelude::{godot_init, InitHandle};
 
@@ -8,6 +9,7 @@ use gdnative::prelude::{godot_init, InitHandle};
 fn init(handle: InitHandle) {
     handle.add_class::<game::Game>();
     handle.add_class::<servo::Servo>();
+    handle.add_class::<walker::Walker>();
 }
 
 // macros that create the entry-points of the dynamic library.

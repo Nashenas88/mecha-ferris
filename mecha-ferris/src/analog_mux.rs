@@ -102,6 +102,7 @@ impl AnalogMux {
         }
         let to_pull_up = self.pull_ups & (1 << address);
         let to_pull_down = self.pull_downs & (1 << address);
+
         if to_pull_up == 0 && to_pull_down == 0 {
             self.muxed_pin = self.muxed_pin.take().into_pull_down_disabled();
         }

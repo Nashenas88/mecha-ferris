@@ -1061,22 +1061,22 @@ run_task = "run-godot"
 script_runner = "@shell"
 script = '''
 cd ../godot/
-godot -d
+godot -d ${@}
 '''
 
 [tasks.run-godot-macos]
 script_runner = "@shell"
 script = '''
 cd ../godot/
-/Applications/Godot.app/Contents/MacOS/Godot -d
+/Applications/Godot.app/Contents/MacOS/Godot -d ${@}
 '''
 
 [tasks.run]
 run_task = [
     { name = "run-for-windows", condition = { platforms = ["windows"] } },
     { name = "run-for-linux", condition = { platforms = ["linux"] } },
-    { name = "run-for-macos", condition = { platforms = ["mac"], env = { "CARGO_MAKE_RUST_TARGET_ARCH" = "x86_64" } } },
-    { name = "run-for-macos-apple-silicon", condition = { platforms = ["mac"], env = { "CARGO_MAKE_RUST_TARGET_ARCH" = "aarch64" } } }
+    { name = "run-for-macos", condition = { platforms = ["mac"], env = { CARGO_MAKE_RUST_TARGET_ARCH = "x86_64" } } },
+    { name = "run-for-macos-apple-silicon", condition = { platforms = ["mac"], env = { CARGO_MAKE_RUST_TARGET_ARCH = "aarch64" } } }
 ]
 
 [tasks.test]

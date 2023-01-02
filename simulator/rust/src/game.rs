@@ -1,9 +1,43 @@
 use crate::servo::Servo;
 use gdnative::api::*;
 use gdnative::prelude::*;
-use kinematics::DefaultConsts;
-use kinematics::Leg;
-use kinematics::Point3;
+use kinematics::{DefaultConsts, ExpensiveMath, Leg, LegConsts, LutMath, Point3, Translation3};
+
+type MechaLeg = Leg<f32, StdMath>;
+
+#[derive(Copy, Clone)]
+pub struct StdMath;
+
+impl ExpensiveMath<f32> for StdMath {
+    fn atan2(l: f32, r: f32) -> f32 {
+        l.atan2(r)
+    }
+
+    #[inline(always)]
+    fn acos(f: f32) -> f32 {
+        f.acos()
+    }
+
+    #[inline(always)]
+    fn sin(f: f32) -> f32 {
+        f.sin()
+    }
+
+    #[inline(always)]
+    fn cos(f: f32) -> f32 {
+        f.cos()
+    }
+
+    #[inline(always)]
+    fn sincos(f: f32) -> (f32, f32) {
+        (f.sin(), f.cos())
+    }
+
+    #[inline(always)]
+    fn sqrt(f: f32) -> f32 {
+        f.sqrt()
+    }
+}
 
 /// The Game "class"
 #[derive(NativeClass)]
@@ -13,7 +47,7 @@ pub struct Game {
     time: f64,
     #[property]
     step_delay: f64,
-    leg: Leg,
+    leg: MechaLeg,
     reset: bool,
     #[property]
     target: NodePath,
@@ -55,8 +89,6 @@ impl Space {
     }
 }
 
-// __One__ `impl` block can have the `#[methods]` attribute, which will generate
-// code to automatically bind any exported methods to Godot.
 #[methods]
 impl Game {
     // Register the builder for methods, properties and/or signals.
@@ -66,11 +98,10 @@ impl Game {
 
     /// The "constructor" of the class.
     fn new(_owner: &Spatial) -> Self {
-        godot_print!("Game is created!");
         Game {
             time: 0.0,
             step_delay: 0.0,
-            leg: Leg::new(),
+            leg: MechaLeg::default(),
             reset: false,
             target: NodePath::default(),
             target_coxa_space: NodePath::default(),
@@ -80,10 +111,6 @@ impl Game {
         }
     }
 
-    // In order to make a method known to Godot, the #[export] attribute has to be used.
-    // In Godot script-classes do not actually inherit the parent class.
-    // Instead they are "attached" to the parent object, called the "owner".
-    // The owner is passed to every single exposed method.
     #[method]
     unsafe fn _ready(&mut self, #[base] _owner: &Spatial) {}
 
@@ -130,14 +157,14 @@ impl Game {
     }
 
     fn home_process(&mut self, owner: &Spatial) {
-        if self.time > 6.0 {
+        if self.time > 2.0 {
             self.time = 0.0;
             self.robot_state = RobotState::Following;
             return;
         }
 
         unsafe {
-            self.move_leg(owner, Point3::new(0.0, 90.0, 160.0));
+            self.move_leg(owner, Point3::new(0.0, 90.0, 190.0));
         }
     }
 
@@ -147,7 +174,8 @@ impl Game {
             self.time = 0.0;
         }
         let circle_angle = self.time / self.step_delay * 2.0 * std::f64::consts::PI;
-        let target = point_on_circle(0.0, 150.0, 25.0, circle_angle as f32);
+        let target = point_on_circle(0.0, -60.0, 180.0, 40.0, circle_angle as f32);
+        // let target = point_on_line(0.0, -70.0, 140.0, 40.0, circle_angle as f32);
         let vector = Vector3 {
             x: target.x,
             y: target.y,
@@ -171,6 +199,10 @@ impl Game {
     }
 
     unsafe fn move_leg(&mut self, owner: &Spatial, target: Point3<f32>) {
+        // Move the target to the coxa servo's space.
+        let target = Translation3::new(0.0, -<DefaultConsts as LegConsts>::COXA_HEIGHT, 0.0)
+            .transform_point(&target);
+        godot_print!("Target at ({}, {}, {})", target.x, target.y, target.z);
         if let Err(e) = self.leg.go_to(target) {
             godot_print!("Failed to calculate leg position: {e:?}");
             return;
@@ -178,35 +210,28 @@ impl Game {
 
         godot_print!(
             "Angles: ({:6.2}, {:6.2}, {:6.2})",
-            self.leg.coxa_servo_angle(),
-            self.leg.femur_servo_angle(),
-            self.leg.tibia_servo_angle()
+            rad_to_degree(self.leg.coxa_servo_angle()),
+            rad_to_degree(self.leg.femur_servo_angle()),
+            rad_to_degree(self.leg.tibia_servo_angle())
         );
 
-        let origin_to_coxa = Leg::<DefaultConsts>::origin_to_coxa();
+        let origin_to_coxa = Leg::<f32, LutMath, DefaultConsts>::origin_to_coxa();
         let target_coxa_space = self.target_coxa_space.to_string();
         if !target_coxa_space.is_empty() {
             let node = owner.get_node(target_coxa_space).unwrap().assume_safe();
             let node = node.cast::<CSGSphere>().unwrap();
-            if let Some(target) = origin_to_coxa
-                .try_inverse()
-                .map(|t| t.transform_point(&target))
-            {
-                node.set_translation(Vector3::new(target.x, target.y, target.z));
-            }
+            let target = origin_to_coxa.transform_point(&target);
+            node.set_translation(Vector3::new(target.x, target.y, target.z));
         }
 
-        let coxa_to_femur = Leg::<DefaultConsts>::coxa_to_femur(self.leg.coxa_servo_angle());
+        let coxa_to_femur =
+            Leg::<f32, LutMath, DefaultConsts>::coxa_to_femur(self.leg.coxa_servo_angle());
         let target_femur_space = self.target_femur_space.to_string();
         if !target_femur_space.is_empty() {
             let node = owner.get_node(target_femur_space).unwrap().assume_safe();
             let node = node.cast::<CSGSphere>().unwrap();
-            if let Some(target) = (origin_to_coxa * coxa_to_femur)
-                .try_inverse()
-                .map(|t| t.transform_point(&target))
-            {
-                node.set_translation(Vector3::new(target.x, target.y, target.z));
-            }
+            let target = (coxa_to_femur * origin_to_coxa).transform_point(&target);
+            node.set_translation(Vector3::new(target.x, target.y, target.z));
         }
 
         let deg_coxa_servo_angle = rad_to_degree(self.leg.coxa_servo_angle());
@@ -320,6 +345,12 @@ fn rad_to_degree(rad: f32) -> f32 {
     rad / core::f32::consts::PI * 180.0
 }
 
-fn point_on_circle(z: f32, x: f32, radius: f32, angle: f32) -> Point3<f32> {
-    Point3::new(x + radius * angle.sin(), 0.0, z + radius * angle.cos())
+#[allow(dead_code)]
+fn point_on_circle(z: f32, y: f32, x: f32, radius: f32, angle: f32) -> Point3<f32> {
+    Point3::new(x + radius * angle.sin(), y, z + radius * angle.cos())
+}
+
+#[allow(dead_code)]
+fn point_on_line(z: f32, y: f32, x: f32, length: f32, t: f32) -> Point3<f32> {
+    Point3::new(x, y, z + length * t.cos())
 }
