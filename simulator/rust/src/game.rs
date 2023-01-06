@@ -1,9 +1,12 @@
 use crate::servo::Servo;
 use gdnative::api::*;
 use gdnative::prelude::*;
-use kinematics::{DefaultConsts, ExpensiveMath, Leg, LegConsts, LutMath, Point3, Translation3};
+use kinematics::lut::LutMath;
+use kinematics::Matrix4;
+use kinematics::{DefaultConsts, ExpensiveMath, Leg, Point3, Translation3};
 
 type MechaLeg = Leg<f32, StdMath>;
+const COXA_HEIGHT: f32 = 90.0;
 
 #[derive(Copy, Clone)]
 pub struct StdMath;
@@ -200,8 +203,7 @@ impl Game {
 
     unsafe fn move_leg(&mut self, owner: &Spatial, target: Point3<f32>) {
         // Move the target to the coxa servo's space.
-        let target = Translation3::new(0.0, -<DefaultConsts as LegConsts>::COXA_HEIGHT, 0.0)
-            .transform_point(&target);
+        let target = Translation3::new(0.0, -COXA_HEIGHT, 0.0).transform_point(&target);
         godot_print!("Target at ({}, {}, {})", target.x, target.y, target.z);
         if let Err(e) = self.leg.go_to(target) {
             godot_print!("Failed to calculate leg position: {e:?}");
@@ -215,7 +217,7 @@ impl Game {
             rad_to_degree(self.leg.tibia_servo_angle())
         );
 
-        let origin_to_coxa = Leg::<f32, LutMath, DefaultConsts>::origin_to_coxa();
+        let origin_to_coxa = Self::origin_to_coxa();
         let target_coxa_space = self.target_coxa_space.to_string();
         if !target_coxa_space.is_empty() {
             let node = owner.get_node(target_coxa_space).unwrap().assume_safe();
@@ -330,6 +332,17 @@ impl Game {
             Space::CoxaServo => self.target_coxa_space.to_godot_string(),
             Space::FemurServo => self.target_femur_space.to_godot_string(),
         }
+    }
+
+    /// Returns a matrix that transforms a point in coxa space to one in body space
+    #[allow(dead_code)]
+    fn coxa_to_origin() -> Matrix4<f32> {
+        Translation3::new(0.0, COXA_HEIGHT, 0.0).to_homogeneous()
+    }
+
+    /// Returns a matrix that transforms a point in body space to one in coxa space
+    fn origin_to_coxa() -> Matrix4<f32> {
+        Translation3::new(0.0, -COXA_HEIGHT, 0.0).to_homogeneous()
     }
 }
 

@@ -15,6 +15,7 @@ stl/
 !.vscode/settings.json
 
 .cargo-ok
+simulator/lib/**/*.so
 simulator/godot/*.translation
 simulator/godot/.import/
 simulator/godot/.mono/

@@ -1,4 +1,3 @@
-mod animation;
 mod game;
 mod servo;
 mod walker;

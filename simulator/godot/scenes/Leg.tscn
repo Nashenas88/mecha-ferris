@@ -1,0 +1,63 @@
+[gd_scene load_steps=4 format=2]
+
+[ext_resource path="res://native/Servo.gdns" type="Script" id=1]
+
+[sub_resource type="PhysicsMaterial" id=1]
+
+[sub_resource type="SphereShape" id=2]
+radius = 3.0
+
+[node name="Spatial" type="Spatial"]
+
+[node name="CoxaServo1" type="CSGCylinder" parent="."]
+transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
+radius = 5.0
+height = 20.0
+script = ExtResource( 1 )
+base/next_servo = NodePath("Spatial/FemurServo")
+base/angular_velocity = 90.0
+
+[node name="CoxaLink" type="CSGCylinder" parent="CoxaServo1"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
+radius = 0.5
+height = 54.5
+
+[node name="Spatial" type="Spatial" parent="CoxaServo1"]
+transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
+
+[node name="FemurServo" type="CSGCylinder" parent="CoxaServo1/Spatial"]
+radius = 5.0
+height = 20.0
+script = ExtResource( 1 )
+base/next_servo = NodePath("Spatial/TibiaServo")
+base/angular_velocity = 135.0
+
+[node name="FemurLink" type="CSGCylinder" parent="CoxaServo1/Spatial/FemurServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
+radius = 0.5
+height = 59.5
+
+[node name="Spatial" type="Spatial" parent="CoxaServo1/Spatial/FemurServo"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
+
+[node name="TibiaServo" type="CSGCylinder" parent="CoxaServo1/Spatial/FemurServo/Spatial"]
+radius = 5.0
+height = 20.0
+script = ExtResource( 1 )
+base/angular_velocity = 135.0
+
+[node name="TibiaLink" type="CSGCylinder" parent="CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo"]
+transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
+radius = 0.5
+height = 185.0
+
+[node name="RigidBody" type="RigidBody" parent="CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 92.5, 0 )
+visible = false
+physics_material_override = SubResource( 1 )
+
+[node name="CollisionShape" type="CollisionShape" parent="CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
+shape = SubResource( 2 )
+
+[node name="CSGSphere" type="CSGSphere" parent="CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
+radius = 3.0

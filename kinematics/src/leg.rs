@@ -1,8 +1,8 @@
-use crate::lut;
-
 use core::marker::PhantomData;
+use core::ops::{Add, Mul, Neg, Sub};
 
 use nalgebra::{Matrix4, Point3, RealField, Rotation3, Translation3, Vector3};
+use num_traits::FloatConst;
 
 #[allow(dead_code)]
 struct Point<F> {
@@ -20,100 +20,23 @@ pub trait ExpensiveMath<F> {
     fn sqrt(f: F) -> F;
 }
 
-#[derive(Copy, Clone)]
-pub struct LutMath;
-const LUT_MUL: f32 = 2048.0 / core::f32::consts::PI;
-
-impl ExpensiveMath<f32> for LutMath {
-    fn atan2(l: f32, r: f32) -> f32 {
-        let y = (l + 256.0).clamp(0.0, 511.0);
-        let x = (r + 256.0).clamp(0.0, 511.0);
-        lut::ATAN2[y as usize][x as usize]
-        // let map = lut::ATAN2[y as usize][x as usize];
-        // let left_y = y - 0.5;
-        // let right_y = y + 0.5;
-        // let left_x = x - 0.5;
-        // let right_x = x + 0.5;
-        // let ll = lut::ATAN2[left_y as usize][left_x as usize];
-        // let lr = lut::ATAN2[left_y as usize][right_x as usize];
-        // let rr = lut::ATAN2[right_y as usize][right_x as usize];
-        // let rl = lut::ATAN2[right_y as usize][left_x as usize];
-        // let mapped_left_x = ll * (left_y - y).abs() + rl * (right_y - y).abs();
-        // let mapped_right_x = lr * (left_y - y).abs() + rr * (right_y - y).abs();
-        // let lerp = mapped_left_x * (left_x - x).abs() + mapped_right_x * (right_x - x).abs();
-        // println!("atan2({l},{r}) = {map} vs {lerp} vs {}", l.atan2(r));
-        // lerp
-    }
-
-    #[inline(always)]
-    fn acos(f: f32) -> f32 {
-        let idx = (((f + core::f32::consts::PI) * LUT_MUL) as usize).clamp(0, 4096);
-        lut::ACOS[idx]
-    }
-
-    #[inline(always)]
-    fn sin(f: f32) -> f32 {
-        let idx = (((f + core::f32::consts::PI) * LUT_MUL) as usize).clamp(0, 4095);
-        lut::SIN[idx]
-        // float_funcs::fsin(f)
-    }
-
-    #[inline(always)]
-    fn cos(f: f32) -> f32 {
-        let idx = (((f + core::f32::consts::PI) * LUT_MUL) as usize).clamp(0, 4095);
-        lut::COS[idx]
-        // float_funcs::fcos(f)
-    }
-
-    #[inline(always)]
-    fn sincos(f: f32) -> (f32, f32) {
-        let idx = (((f + core::f32::consts::PI) * LUT_MUL) as usize).clamp(0, 4095);
-        (crate::lut::SIN[idx], lut::COS[idx])
-    }
-
-    #[inline(always)]
-    fn sqrt(f: f32) -> f32 {
-        // let mut tmp: i32 = f.to_bits() as i32;
-        // tmp -= 127 << 23; // Remove IEEE bias from exponent (-2^23)
-        // // tmp is now an appoximation to logbase2(val)
-        // tmp >>= 1; // divide by 2
-        // tmp += 127 >> 23; // restore the IEEE bias from the exponent (+2^23)
-        // let res = f32::from_bits(tmp as u32);
-        let mut y = f;
-        let mut i: u32 = y.to_bits();
-        i = 0x5F375A86_u32.wrapping_sub(i >> 1);
-        y = f32::from_bits(i);
-        1.0 / (y * (1.5 - (f * 0.5 * y * y)))
-    }
-}
-
 // Used to pull in dbg
 #[cfg(test)]
 extern crate std;
 
+pub trait LegConsts<F> {
+    const COXA_LENGTH: F;
+    const FEMUR_LENGTH: F;
+    const TIBIA_LENGTH: F;
+}
+
 #[derive(Copy, Clone)]
 pub struct DefaultConsts;
-impl LegConsts for DefaultConsts {
-    const COXA_HEIGHT: f32 = 90.0;
+impl LegConsts<f32> for DefaultConsts {
     const COXA_LENGTH: f32 = 54.5;
     const FEMUR_LENGTH: f32 = 59.5;
     // const TIBIA_LENGTH: f32 = 175.0;
     const TIBIA_LENGTH: f32 = 185.0;
-}
-
-#[derive(Copy, Clone)]
-pub struct Leg<F, T, C = DefaultConsts> {
-    coxa_servo_angle: F,
-    femur_servo_angle: F,
-    tibia_servo_angle: F,
-    _phantom: PhantomData<(C, T)>,
-}
-
-pub trait LegConsts {
-    const COXA_HEIGHT: f32;
-    const COXA_LENGTH: f32;
-    const FEMUR_LENGTH: f32;
-    const TIBIA_LENGTH: f32;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -124,6 +47,52 @@ pub enum LegError<F> {
     // (Actual, Min)
     TooClose(F, F),
     NonFiniteCalculation,
+}
+
+pub struct Leg<F, T, C = DefaultConsts> {
+    coxa_servo_angle: F,
+    femur_servo_angle: F,
+    tibia_servo_angle: F,
+    _phantom: PhantomData<(C, T)>,
+}
+
+impl<F, T, C> Clone for Leg<F, T, C>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            coxa_servo_angle: self.coxa_servo_angle.clone(),
+            femur_servo_angle: self.femur_servo_angle.clone(),
+            tibia_servo_angle: self.tibia_servo_angle.clone(),
+            _phantom: self._phantom,
+        }
+    }
+}
+
+impl<F, T, C> Copy for Leg<F, T, C> where F: Copy {}
+
+impl<F, T, C> Default for Leg<F, T, C>
+where
+    F: Default,
+{
+    fn default() -> Self {
+        Self {
+            coxa_servo_angle: Default::default(),
+            femur_servo_angle: Default::default(),
+            tibia_servo_angle: Default::default(),
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl<F, T, C> Leg<F, T, C>
+where
+    F: Default,
+{
+    pub fn new() -> Self {
+        <Self as Default>::default()
+    }
 }
 
 impl<F, T, C> Leg<F, T, C>
@@ -143,33 +112,35 @@ where
     }
 }
 
-impl<F, T, C> Default for Leg<F, T, C>
-where
-    F: Default,
-{
-    fn default() -> Self {
-        Self {
-            coxa_servo_angle: Default::default(),
-            femur_servo_angle: Default::default(),
-            tibia_servo_angle: Default::default(),
-            _phantom: PhantomData,
-        }
-    }
+pub trait Two {
+    const TWO: Self;
+}
+
+impl Two for f32 {
+    const TWO: f32 = 2.0;
 }
 
 impl<F, T, C> Leg<F, T, C>
 where
-    F: From<f32> + Copy + RealField,
+    F: Copy
+        + RealField
+        + ~const Mul<Output = F>
+        + ~const Add<Output = F>
+        + ~const Sub<Output = F>
+        + ~const Neg<Output = F>
+        + Two
+        + FloatConst,
     T: ExpensiveMath<F>,
-    C: LegConsts,
+    C: LegConsts<F>,
 {
-    const FL2: f32 = <C as LegConsts>::FEMUR_LENGTH * <C as LegConsts>::FEMUR_LENGTH;
-    const TL2: f32 = <C as LegConsts>::TIBIA_LENGTH * <C as LegConsts>::TIBIA_LENGTH;
-    const TF2: f32 = 2.0 * <C as LegConsts>::FEMUR_LENGTH * <C as LegConsts>::TIBIA_LENGTH;
-    const MAX_LEG_LEN2: f32 = (<C as LegConsts>::FEMUR_LENGTH + <C as LegConsts>::TIBIA_LENGTH)
-        * (<C as LegConsts>::FEMUR_LENGTH + <C as LegConsts>::TIBIA_LENGTH);
-    const MIN_LEG_LEN2: f32 = (<C as LegConsts>::TIBIA_LENGTH - <C as LegConsts>::FEMUR_LENGTH)
-        * (<C as LegConsts>::TIBIA_LENGTH - <C as LegConsts>::FEMUR_LENGTH);
+    const FL2: F = <C as LegConsts<F>>::FEMUR_LENGTH * <C as LegConsts<F>>::FEMUR_LENGTH;
+    const TL2: F = <C as LegConsts<F>>::TIBIA_LENGTH * <C as LegConsts<F>>::TIBIA_LENGTH;
+    const TF2: F =
+        <F as Two>::TWO * <C as LegConsts<F>>::FEMUR_LENGTH * <C as LegConsts<F>>::TIBIA_LENGTH;
+    const MAX_LEG_LEN2: F = (<C as LegConsts<F>>::FEMUR_LENGTH + <C as LegConsts<F>>::TIBIA_LENGTH)
+        * (<C as LegConsts<F>>::FEMUR_LENGTH + <C as LegConsts<F>>::TIBIA_LENGTH);
+    const MIN_LEG_LEN2: F = (<C as LegConsts<F>>::TIBIA_LENGTH - <C as LegConsts<F>>::FEMUR_LENGTH)
+        * (<C as LegConsts<F>>::TIBIA_LENGTH - <C as LegConsts<F>>::FEMUR_LENGTH);
 
     pub fn go_to(&mut self, target: Point3<F>) -> Result<(), LegError<F>> {
         let coxa_angle = T::atan2(target.x, target.z);
@@ -177,30 +148,21 @@ where
         let femur_point = origin_to_femur_servo.transform_point(&target);
 
         let distance_squared = femur_point.z * femur_point.z + femur_point.x * femur_point.x;
-        if distance_squared > F::from(Self::MAX_LEG_LEN2) {
-            return Err(LegError::TooFar(
-                distance_squared,
-                F::from(Self::MAX_LEG_LEN2),
-            ));
-        } else if distance_squared < F::from(Self::MIN_LEG_LEN2) {
-            return Err(LegError::TooClose(
-                distance_squared,
-                F::from(Self::MIN_LEG_LEN2),
-            ));
+        if distance_squared > Self::MAX_LEG_LEN2 {
+            return Err(LegError::TooFar(distance_squared, Self::MAX_LEG_LEN2));
+        } else if distance_squared < Self::MIN_LEG_LEN2 {
+            return Err(LegError::TooClose(distance_squared, Self::MIN_LEG_LEN2));
         }
 
-        let tibia_angle = T::acos(
-            (distance_squared - F::from(Self::FL2) - F::from(Self::TL2)) / F::from(Self::TF2),
-        );
+        let tibia_angle = T::acos((distance_squared - Self::FL2 - Self::TL2) / Self::TF2);
         if !tibia_angle.is_finite() {
             return Err(LegError::NonFiniteCalculation);
         }
         let (tibia_sin, tibia_cos) = T::sincos(tibia_angle);
         let femur_angle = T::atan2(femur_point.x, femur_point.z)
             - T::atan2(
-                F::from(<C as LegConsts>::TIBIA_LENGTH) * tibia_sin,
-                F::from(<C as LegConsts>::FEMUR_LENGTH)
-                    + F::from(<C as LegConsts>::TIBIA_LENGTH) * tibia_cos,
+                <C as LegConsts<F>>::TIBIA_LENGTH * tibia_sin,
+                <C as LegConsts<F>>::FEMUR_LENGTH + <C as LegConsts<F>>::TIBIA_LENGTH * tibia_cos,
             );
         if !femur_angle.is_finite() {
             return Err(LegError::NonFiniteCalculation);
@@ -212,49 +174,19 @@ where
         Ok(())
     }
 
-    /// Returns a matrix that transforms a point in coxa space to one in body space
-    pub fn coxa_to_origin() -> Matrix4<F> {
-        Translation3::new(
-            F::from(0.0),
-            F::from(<C as LegConsts>::COXA_HEIGHT),
-            F::from(0.0),
-        )
-        .to_homogeneous()
-    }
-
-    /// Returns a matrix that transforms a point in body space to one in coxa space
-    pub fn origin_to_coxa() -> Matrix4<F> {
-        Translation3::new(
-            F::from(0.0),
-            F::from(-<C as LegConsts>::COXA_HEIGHT),
-            F::from(0.0),
-        )
-        .to_homogeneous()
-    }
-
     /// Returns a matrix that transforms a point in femur space to one in coxa space
     pub fn femur_to_coxa(coxa_angle: F) -> Matrix4<F> {
         Rotation3::from_axis_angle(&Vector3::y_axis(), coxa_angle).to_homogeneous()
-            * Translation3::new(
-                F::from(0.0),
-                F::from(0.0),
-                F::from(<C as LegConsts>::COXA_LENGTH),
-            )
-            .to_homogeneous()
-            * Rotation3::from_axis_angle(&Vector3::z_axis(), F::from(-core::f32::consts::FRAC_PI_2))
+            * Translation3::new(F::zero(), F::zero(), <C as LegConsts<F>>::COXA_LENGTH)
                 .to_homogeneous()
+            * Rotation3::from_axis_angle(&Vector3::z_axis(), -F::FRAC_PI_2()).to_homogeneous()
     }
 
     /// Returns a matrix that transforms a point in coxa space to one in femur space
     pub fn coxa_to_femur(coxa_angle: F) -> Matrix4<F> {
-        Rotation3::from_axis_angle(&Vector3::z_axis(), F::from(core::f32::consts::FRAC_PI_2))
-            .to_homogeneous()
-            * Translation3::new(
-                F::from(0.0),
-                F::from(0.0),
-                F::from(-<C as LegConsts>::COXA_LENGTH),
-            )
-            .to_homogeneous()
+        Rotation3::from_axis_angle(&Vector3::z_axis(), F::FRAC_PI_2()).to_homogeneous()
+            * Translation3::new(F::zero(), F::zero(), -<C as LegConsts<F>>::COXA_LENGTH)
+                .to_homogeneous()
             * Rotation3::from_axis_angle(&Vector3::y_axis(), -coxa_angle).to_homogeneous()
     }
 
@@ -262,24 +194,16 @@ where
     #[allow(dead_code)]
     pub fn tibia_to_femur(femur_angle: F) -> Matrix4<F> {
         Rotation3::from_axis_angle(&Vector3::y_axis(), femur_angle).to_homogeneous()
-            * Translation3::new(
-                F::from(0.0),
-                F::from(0.0),
-                F::from(<C as LegConsts>::FEMUR_LENGTH),
-            )
-            .to_homogeneous()
+            * Translation3::new(F::zero(), F::zero(), <C as LegConsts<F>>::FEMUR_LENGTH)
+                .to_homogeneous()
     }
 
     /// Returns a matrix that transforms a point in foot space to one in tibia space
     #[allow(dead_code)]
     pub fn foot_to_tibia(tibia_angle: F) -> Matrix4<F> {
         Rotation3::from_axis_angle(&Vector3::y_axis(), tibia_angle).to_homogeneous()
-            * Translation3::new(
-                F::from(0.0),
-                F::from(0.0),
-                F::from(<C as LegConsts>::TIBIA_LENGTH),
-            )
-            .to_homogeneous()
+            * Translation3::new(F::zero(), F::zero(), <C as LegConsts<F>>::TIBIA_LENGTH)
+                .to_homogeneous()
     }
 }
 

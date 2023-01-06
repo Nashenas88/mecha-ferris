@@ -285,43 +285,43 @@ fn main() -> ! {
                 // I wonder if removing this causes the LED's to be written to too quickly, or
                 // if it's a problem with updating the servo data too quickly (maybe bug in DMA
                 // mapping).
-                defmt::info!(
-                    "Moving to ({}, {}, {})",
-                    coxa_servo_angle,
-                    femur_servo_angle,
-                    tibia_servo_angle
-                );
+                // defmt::info!(
+                //     "Moving to ({}, {}, {})",
+                //     coxa_servo_angle,
+                //     femur_servo_angle,
+                //     tibia_servo_angle
+                // );
                 servo_cluster.set_value(servo1, tibia_servo_angle, false);
                 servo_cluster.set_value(servo2, femur_servo_angle, false);
                 servo_cluster.set_value(servo3, coxa_servo_angle, false);
                 servo_cluster.load();
-                let coxa_color = RGB8 {
-                    r: coxa_servo_angle as u8,
-                    g: 0,
-                    b: 0,
-                };
-                let femur_color = RGB8 {
-                    r: 0,
-                    g: (femur_servo_angle + 90.0) as u8,
-                    b: 0,
-                };
-                let tibia_color = RGB8 {
-                    r: 0,
-                    g: 0,
-                    b: tibia_servo_angle as u8,
-                };
-                let _ = ws.write(brightness(
-                    [
-                        coxa_color,
-                        coxa_color,
-                        femur_color,
-                        femur_color,
-                        tibia_color,
-                        tibia_color,
-                    ]
-                    .into_iter(),
-                    LED_BRIGHTNESS,
-                ));
+                // let coxa_color = RGB8 {
+                //     r: coxa_servo_angle as u8,
+                //     g: 0,
+                //     b: 0,
+                // };
+                // let femur_color = RGB8 {
+                //     r: 0,
+                //     g: (femur_servo_angle + 90.0) as u8,
+                //     b: 0,
+                // };
+                // let tibia_color = RGB8 {
+                //     r: 0,
+                //     g: 0,
+                //     b: tibia_servo_angle as u8,
+                // };
+                // let _ = ws.write(brightness(
+                //     [
+                //         coxa_color,
+                //         coxa_color,
+                //         femur_color,
+                //         femur_color,
+                //         tibia_color,
+                //         tibia_color,
+                //     ]
+                //     .into_iter(),
+                //     LED_BRIGHTNESS,
+                // ));
             }
             Err(e) => {
                 defmt::error!("Unable to reach target: {}", e);
