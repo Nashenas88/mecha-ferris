@@ -1,22 +1,8 @@
-[gd_scene load_steps=11 format=2]
+[gd_scene load_steps=7 format=2]
 
 [ext_resource path="res://scenes/Camera.gd" type="Script" id=1]
-[ext_resource path="res://native/Servo.gdns" type="Script" id=2]
+[ext_resource path="res://scenes/Leg.tscn" type="PackedScene" id=2]
 [ext_resource path="res://native/Walker.gdns" type="Script" id=3]
-
-[sub_resource type="PhysicsMaterial" id=4]
-
-[sub_resource type="SphereShape" id=5]
-radius = 3.0
-
-[sub_resource type="SpatialMaterial" id=3]
-albedo_color = Color( 1, 0, 0, 1 )
-
-[sub_resource type="SpatialMaterial" id=2]
-albedo_color = Color( 0.654902, 0.654902, 0.0666667, 1 )
-metallic = 0.95
-metallic_specular = 0.89
-roughness = 0.44
 
 [sub_resource type="PhysicsMaterial" id=6]
 
@@ -27,7 +13,7 @@ albedo_color = Color( 1, 0, 0, 0.784314 )
 [sub_resource type="HeightMapShape" id=7]
 
 [node name="Spatial" type="Spatial"]
-transform = Transform( 0.001, 0, 0, 0, 0.001, 0, 0, 0, 0.001, 0, 0, 0 )
+transform = Transform( 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0 )
 script = ExtResource( 3 )
 anim_scale = 1.0
 base_radius = 100.0
@@ -45,376 +31,29 @@ transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 90, 0 )
 radius = 100.0
 sides = 32
 
-[node name="Spatial1" type="Spatial" parent="Body"]
-transform = Transform( -4.37114e-08, 0, -1, 0, 1, 0, 1, 0, -4.37114e-08, 0, 0, 100 )
+[node name="Spatial1" parent="Body" instance=ExtResource( 2 )]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 100 )
 
-[node name="CoxaServo1" type="CSGCylinder" parent="Body/Spatial1"]
-transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
-radius = 5.0
-height = 20.0
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/FemurServo")
-base/angular_velocity = 90.0
+[node name="Spatial2" parent="Body" instance=ExtResource( 2 )]
+transform = Transform( 0.5, 0, 0.866025, 0, 1, 0, -0.866025, 0, 0.5, 86.6, 0, 50 )
 
-[node name="CoxaLink" type="CSGCylinder" parent="Body/Spatial1/CoxaServo1"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
-radius = 0.5
-height = 54.5
+[node name="Spatial3" parent="Body" instance=ExtResource( 2 )]
+transform = Transform( -0.5, 0, 0.866025, 0, 1, 0, -0.866025, 0, -0.5, 86.6, 0, -50 )
 
-[node name="Spatial" type="Spatial" parent="Body/Spatial1/CoxaServo1"]
-transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
+[node name="Spatial4" parent="Body" instance=ExtResource( 2 )]
+transform = Transform( -1, 0, -8.74228e-08, 0, 1, 0, 8.74228e-08, 0, -1, 0, 0, -100 )
 
-[node name="FemurServo" type="CSGCylinder" parent="Body/Spatial1/CoxaServo1/Spatial"]
-radius = 5.0
-height = 20.0
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/TibiaServo")
-base/angular_velocity = 135.0
+[node name="Spatial5" parent="Body" instance=ExtResource( 2 )]
+transform = Transform( -0.5, 0, -0.866025, 0, 1, 0, 0.866025, 0, -0.5, -86.6, 0, -50 )
 
-[node name="FemurLink" type="CSGCylinder" parent="Body/Spatial1/CoxaServo1/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
-radius = 0.5
-height = 59.5
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial1/CoxaServo1/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
-
-[node name="TibiaServo" type="CSGCylinder" parent="Body/Spatial1/CoxaServo1/Spatial/FemurServo/Spatial"]
-radius = 5.0
-height = 20.0
-script = ExtResource( 2 )
-base/angular_velocity = 135.0
-
-[node name="TibiaLink" type="CSGCylinder" parent="Body/Spatial1/CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
-radius = 0.5
-height = 185.0
-
-[node name="RigidBody" type="RigidBody" parent="Body/Spatial1/CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 92.5, 0 )
-visible = false
-physics_material_override = SubResource( 4 )
-
-[node name="CollisionShape" type="CollisionShape" parent="Body/Spatial1/CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-shape = SubResource( 5 )
-
-[node name="CSGSphere" type="CSGSphere" parent="Body/Spatial1/CoxaServo1/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-radius = 3.0
-
-[node name="Spatial2" type="Spatial" parent="Body"]
-transform = Transform( 0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, 0.866025, 86.6, 0, 50 )
-
-[node name="CoxaServo2" type="CSGCylinder" parent="Body/Spatial2"]
-transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
-radius = 5.0
-height = 20.0
-material = SubResource( 3 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/FemurServo")
-base/angular_velocity = 90.0
-
-[node name="CoxaLink" type="CSGCylinder" parent="Body/Spatial2/CoxaServo2"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
-radius = 0.5
-height = 54.5
-material = SubResource( 3 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial2/CoxaServo2"]
-transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
-
-[node name="FemurServo" type="CSGCylinder" parent="Body/Spatial2/CoxaServo2/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 3 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/TibiaServo")
-base/angular_velocity = 135.0
-
-[node name="FemurLink" type="CSGCylinder" parent="Body/Spatial2/CoxaServo2/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
-radius = 0.5
-height = 59.5
-material = SubResource( 3 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial2/CoxaServo2/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
-
-[node name="TibiaServo" type="CSGCylinder" parent="Body/Spatial2/CoxaServo2/Spatial/FemurServo/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 3 )
-script = ExtResource( 2 )
-base/angular_velocity = 135.0
-
-[node name="TibiaLink" type="CSGCylinder" parent="Body/Spatial2/CoxaServo2/Spatial/FemurServo/Spatial/TibiaServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
-radius = 0.5
-height = 185.0
-material = SubResource( 3 )
-
-[node name="RigidBody" type="RigidBody" parent="Body/Spatial2/CoxaServo2/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 92.5, 0 )
-visible = false
-physics_material_override = SubResource( 4 )
-
-[node name="CollisionShape" type="CollisionShape" parent="Body/Spatial2/CoxaServo2/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-shape = SubResource( 5 )
-
-[node name="CSGSphere" type="CSGSphere" parent="Body/Spatial2/CoxaServo2/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-radius = 3.0
-
-[node name="Spatial3" type="Spatial" parent="Body"]
-transform = Transform( 0.866025, 0, 0.5, 0, 1, 0, -0.5, 0, 0.866025, 86.6, 0, -50 )
-
-[node name="CoxaServo3" type="CSGCylinder" parent="Body/Spatial3"]
-transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/FemurServo")
-base/angular_velocity = 90.0
-
-[node name="CoxaLink" type="CSGCylinder" parent="Body/Spatial3/CoxaServo3"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
-radius = 0.5
-height = 54.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial3/CoxaServo3"]
-transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
-
-[node name="FemurServo" type="CSGCylinder" parent="Body/Spatial3/CoxaServo3/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/TibiaServo")
-base/angular_velocity = 135.0
-
-[node name="FemurLink" type="CSGCylinder" parent="Body/Spatial3/CoxaServo3/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
-radius = 0.5
-height = 59.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial3/CoxaServo3/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
-
-[node name="TibiaServo" type="CSGCylinder" parent="Body/Spatial3/CoxaServo3/Spatial/FemurServo/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/angular_velocity = 135.0
-
-[node name="TibiaLink" type="CSGCylinder" parent="Body/Spatial3/CoxaServo3/Spatial/FemurServo/Spatial/TibiaServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
-radius = 0.5
-height = 185.0
-material = SubResource( 2 )
-
-[node name="RigidBody" type="RigidBody" parent="Body/Spatial3/CoxaServo3/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 92.5, 0 )
-visible = false
-physics_material_override = SubResource( 4 )
-
-[node name="CollisionShape" type="CollisionShape" parent="Body/Spatial3/CoxaServo3/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-shape = SubResource( 5 )
-
-[node name="CSGSphere" type="CSGSphere" parent="Body/Spatial3/CoxaServo3/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-radius = 3.0
-
-[node name="Spatial4" type="Spatial" parent="Body"]
-transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, -100 )
-
-[node name="CoxaServo4" type="CSGCylinder" parent="Body/Spatial4"]
-transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/FemurServo")
-base/angular_velocity = 90.0
-
-[node name="CoxaLink" type="CSGCylinder" parent="Body/Spatial4/CoxaServo4"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
-radius = 0.5
-height = 54.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial4/CoxaServo4"]
-transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
-
-[node name="FemurServo" type="CSGCylinder" parent="Body/Spatial4/CoxaServo4/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/TibiaServo")
-base/angular_velocity = 135.0
-
-[node name="FemurLink" type="CSGCylinder" parent="Body/Spatial4/CoxaServo4/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
-radius = 0.5
-height = 59.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial4/CoxaServo4/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
-
-[node name="TibiaServo" type="CSGCylinder" parent="Body/Spatial4/CoxaServo4/Spatial/FemurServo/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/angular_velocity = 135.0
-
-[node name="TibiaLink" type="CSGCylinder" parent="Body/Spatial4/CoxaServo4/Spatial/FemurServo/Spatial/TibiaServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
-radius = 0.5
-height = 185.0
-material = SubResource( 2 )
-
-[node name="RigidBody" type="RigidBody" parent="Body/Spatial4/CoxaServo4/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 92.5, 0 )
-visible = false
-physics_material_override = SubResource( 4 )
-
-[node name="CollisionShape" type="CollisionShape" parent="Body/Spatial4/CoxaServo4/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-shape = SubResource( 5 )
-
-[node name="CSGSphere" type="CSGSphere" parent="Body/Spatial4/CoxaServo4/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-radius = 3.0
-
-[node name="Spatial5" type="Spatial" parent="Body"]
-transform = Transform( -0.866026, 0, 0.5, 0, 1, 0, -0.5, 0, -0.866026, -86.6, 0, -50 )
-
-[node name="CoxaServo5" type="CSGCylinder" parent="Body/Spatial5"]
-transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/FemurServo")
-base/angular_velocity = 90.0
-
-[node name="CoxaLink" type="CSGCylinder" parent="Body/Spatial5/CoxaServo5"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
-radius = 0.5
-height = 54.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial5/CoxaServo5"]
-transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
-
-[node name="FemurServo" type="CSGCylinder" parent="Body/Spatial5/CoxaServo5/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/TibiaServo")
-base/angular_velocity = 135.0
-
-[node name="FemurLink" type="CSGCylinder" parent="Body/Spatial5/CoxaServo5/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
-radius = 0.5
-height = 59.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial5/CoxaServo5/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
-
-[node name="TibiaServo" type="CSGCylinder" parent="Body/Spatial5/CoxaServo5/Spatial/FemurServo/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/angular_velocity = 135.0
-
-[node name="TibiaLink" type="CSGCylinder" parent="Body/Spatial5/CoxaServo5/Spatial/FemurServo/Spatial/TibiaServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
-radius = 0.5
-height = 185.0
-material = SubResource( 2 )
-
-[node name="RigidBody" type="RigidBody" parent="Body/Spatial5/CoxaServo5/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 92.5, 0 )
-visible = false
-physics_material_override = SubResource( 4 )
-
-[node name="CollisionShape" type="CollisionShape" parent="Body/Spatial5/CoxaServo5/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-shape = SubResource( 5 )
-
-[node name="CSGSphere" type="CSGSphere" parent="Body/Spatial5/CoxaServo5/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-radius = 3.0
-
-[node name="Spatial6" type="Spatial" parent="Body"]
-transform = Transform( -0.866025, 0, -0.5, 0, 1, 0, 0.5, 0, -0.866025, -86.6, 0, 50 )
-
-[node name="CoxaServo6" type="CSGCylinder" parent="Body/Spatial6"]
-transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/FemurServo")
-base/angular_velocity = 90.0
-
-[node name="CoxaLink" type="CSGCylinder" parent="Body/Spatial6/CoxaServo6"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
-radius = 0.5
-height = 54.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial6/CoxaServo6"]
-transform = Transform( -1.62921e-07, 1, 0, -1, -1.62921e-07, 0, 0, 0, 1, 0, 0, 54.5 )
-
-[node name="FemurServo" type="CSGCylinder" parent="Body/Spatial6/CoxaServo6/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/next_servo = NodePath("Spatial/TibiaServo")
-base/angular_velocity = 135.0
-
-[node name="FemurLink" type="CSGCylinder" parent="Body/Spatial6/CoxaServo6/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
-radius = 0.5
-height = 59.5
-material = SubResource( 2 )
-
-[node name="Spatial" type="Spatial" parent="Body/Spatial6/CoxaServo6/Spatial/FemurServo"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
-
-[node name="TibiaServo" type="CSGCylinder" parent="Body/Spatial6/CoxaServo6/Spatial/FemurServo/Spatial"]
-radius = 5.0
-height = 20.0
-material = SubResource( 2 )
-script = ExtResource( 2 )
-base/angular_velocity = 135.0
-
-[node name="TibiaLink" type="CSGCylinder" parent="Body/Spatial6/CoxaServo6/Spatial/FemurServo/Spatial/TibiaServo"]
-transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
-radius = 0.5
-height = 185.0
-material = SubResource( 2 )
-
-[node name="RigidBody" type="RigidBody" parent="Body/Spatial6/CoxaServo6/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink"]
-transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 92.5, 0 )
-visible = false
-physics_material_override = SubResource( 4 )
-
-[node name="CollisionShape" type="CollisionShape" parent="Body/Spatial6/CoxaServo6/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-shape = SubResource( 5 )
-
-[node name="CSGSphere" type="CSGSphere" parent="Body/Spatial6/CoxaServo6/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
-radius = 3.0
+[node name="Spatial6" parent="Body" instance=ExtResource( 2 )]
+transform = Transform( 0.5, 0, -0.866025, 0, 1, 0, 0.866025, 0, 0.5, -86.6, 0, 50 )
 
 [node name="StaticBody" type="StaticBody" parent="."]
 physics_material_override = SubResource( 6 )
 
 [node name="CSGBox" type="CSGBox" parent="StaticBody"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, -19.9565, 10.4788, 12.5754 )
 width = 2000.0
 height = 0.1
 depth = 2000.0

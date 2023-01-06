@@ -15,12 +15,12 @@ const DEFAULT_HEIGHT: f32 = 90.0;
 
 fn servo_name<T, C>(leg: &MechaLeg<f32, T, C>) -> &'static str {
     match leg.idx() {
-        0 => "Body/Spatial1/CoxaServo1",
-        1 => "Body/Spatial2/CoxaServo2",
-        2 => "Body/Spatial3/CoxaServo3",
-        3 => "Body/Spatial4/CoxaServo4",
-        4 => "Body/Spatial5/CoxaServo5",
-        5 => "Body/Spatial6/CoxaServo6",
+        0 => "Body/Spatial1/CoxaServo",
+        1 => "Body/Spatial2/CoxaServo",
+        2 => "Body/Spatial3/CoxaServo",
+        3 => "Body/Spatial4/CoxaServo",
+        4 => "Body/Spatial5/CoxaServo",
+        5 => "Body/Spatial6/CoxaServo",
         _ => unsafe { unreachable_unchecked() },
     }
 }
