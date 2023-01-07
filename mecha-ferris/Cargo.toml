@@ -14,11 +14,10 @@ defmt-rtt = "0.4"
 fugit = "0.3.6"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 nb = "1.0.0"
-pimoroni-servo2040 = { git = "https://github.com/nashenas88/rp-hal", branch = "dma-offshoot"}
+pimoroni-servo2040 = "0.2.0"
 smart-leds = "0.3.0"
-ws2812-pio = "0.4.0"
-# servo-pio = { git = "https://github.com/nashenas88/servo-pio", branch = "main", features = ["defmt"] }
-servo-pio = { path = "../../servo-pio", features = ["defmt"] }
+ws2812-pio = "0.5.0"
+servo-pio = { git = "https://github.com/nashenas88/servo-pio", tag = "v0.1.0", features = ["defmt"] }
 kinematics = { path = "../kinematics", features = ["defmt"] }
 
 # cargo build/run
@@ -74,4 +73,4 @@ lto = 'fat'
 opt-level = 3
 
 [patch.crates-io]
-rp2040-hal = { git = "https://github.com/nashenas88/rp-hal", branch = "dma-offshoot" }
+rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", rev = "33dd1c6f6abcdccb838a38bbf9fe409b211990d7" }
