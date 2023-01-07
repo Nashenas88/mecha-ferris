@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![feature(const_ops, const_trait_impl)]
 
 pub mod animation;

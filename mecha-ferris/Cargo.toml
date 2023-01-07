@@ -17,7 +17,8 @@ nb = "1.0.0"
 pimoroni-servo2040 = { git = "https://github.com/nashenas88/rp-hal", branch = "dma-offshoot"}
 smart-leds = "0.3.0"
 ws2812-pio = "0.4.0"
-servo-pio = { git = "https://github.com/nashenas88/servo-pio", branch = "main", features = ["defmt"] }
+# servo-pio = { git = "https://github.com/nashenas88/servo-pio", branch = "main", features = ["defmt"] }
+servo-pio = { path = "../../servo-pio", features = ["defmt"] }
 kinematics = { path = "../kinematics", features = ["defmt"] }
 
 # cargo build/run

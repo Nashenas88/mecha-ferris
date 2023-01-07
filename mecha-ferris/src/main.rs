@@ -6,7 +6,8 @@ use defmt::Format;
 use defmt_rtt as _;
 use embedded_hal::timer::CountDown;
 use fugit::ExtU64;
-use kinematics::{ComplexField, ExpensiveMath, Leg, Point3};
+use kinematics::walking::{MechaLeg, VisitLeg, Walking};
+use kinematics::{ComplexField, DefaultConsts, ExpensiveMath, LegError, Point3};
 use mecha_ferris::analog_mux::{AnalogMux, CurrentSensor};
 use mecha_ferris::flexible_input::FlexibleInput;
 use panic_probe as _;
@@ -14,12 +15,13 @@ use pimoroni_servo2040::hal::clocks::SystemClock;
 use pimoroni_servo2040::hal::dma::{Channel, ChannelIndex, DMAExt, CH0, CH1};
 use pimoroni_servo2040::hal::gpio::{Error as GpioError, FunctionConfig, FunctionPio0};
 use pimoroni_servo2040::hal::pio::{PIOExt, StateMachineIndex, UninitStateMachine, PIO, SM0};
-use pimoroni_servo2040::hal::{self, pac, Clock};
+use pimoroni_servo2040::hal::timer::Instant;
+use pimoroni_servo2040::hal::{self, pac, Clock, Timer};
 use pimoroni_servo2040::pac::{interrupt, PIO0};
-use servo_pio::calibration::{AngularCalibration, Calibration, CalibrationData, Point};
+use servo_pio::calibration::{AngularCalibration, CalibrationData, Point};
 use servo_pio::pwm_cluster::{dma_interrupt, GlobalState, GlobalStates, Handler};
 use servo_pio::servo_cluster::{
-    ServoCluster, ServoClusterBuilder, ServoClusterBuilderError, ServoData,
+    ServoCluster, ServoClusterBuilder, ServoClusterBuilderError, ServoData, ServoIdx,
 };
 use smart_leds::{brightness, SmartLedsWrite, RGB8};
 use ws2812_pio::Ws2812Direct;
@@ -27,7 +29,7 @@ use ws2812_pio::Ws2812Direct;
 use pimoroni_servo2040::hal::rom_data::float_funcs;
 
 const LED_BRIGHTNESS: u8 = 16;
-const NUM_SERVOS: usize = 3;
+const NUM_SERVOS: usize = 9;
 const NUM_CHANNELS: usize = 12;
 static mut STATE1: Option<GlobalState<CH0, CH1, PIO0, SM0>> = {
     const NONE_HACK: Option<GlobalState<CH0, CH1, PIO0, SM0>> = None;
@@ -40,6 +42,9 @@ static mut GLOBALS: GlobalStates<NUM_CHANNELS> = {
     }
 };
 const SAMPLES: usize = 10;
+const UPDATE_MS: u64 = 50;
+
+mod calibrations;
 
 struct RomFuncs;
 impl ExpensiveMath<f32> for RomFuncs {
@@ -118,78 +123,43 @@ fn main() -> ! {
         FlexibleInput::from(pins.shared_adc.into_floating_input()),
     );
 
+    let calibrations = calibrations::calibrations();
     let servo_pins: [_; NUM_SERVOS] = [
         ServoData {
             pin: pins.servo3.into_mode::<FunctionPio0>().into(),
-            calibration: Calibration::builder(AngularCalibration::new(
-                Point {
-                    pulse: 780.0,
-                    value: 0.0,
-                },
-                Point {
-                    pulse: 1220.0,
-                    value: 67.5,
-                },
-                Point {
-                    pulse: 2110.0,
-                    value: 157.5,
-                },
-            ))
-            .limit_lower()
-            .limit_upper()
-            .build(),
+            calibration: calibrations[0],
         },
         ServoData {
             pin: pins.servo4.into_mode::<FunctionPio0>().into(),
-            calibration: Calibration::builder(AngularCalibration::new(
-                Point {
-                    pulse: 2275.0,
-                    value: -67.5,
-                },
-                Point {
-                    pulse: 1790.0,
-                    value: 0.0,
-                },
-                Point {
-                    pulse: 890.0,
-                    value: 90.0,
-                },
-            ))
-            .limit_lower()
-            .limit_upper()
-            .build(),
+            calibration: calibrations[1],
         },
         ServoData {
             pin: pins.servo5.into_mode::<FunctionPio0>().into(),
-            calibration: Calibration::builder(AngularCalibration::new(
-                // Point {
-                //     pulse: 2423.0,
-                //     value: 0.0,
-                // },
-                // Point {
-                //     pulse: 1538.0,
-                //     value: 90.0,
-                // },
-                // Point {
-                //     pulse: 900.0,
-                //     value: 180.0,
-                // },
-                Point {
-                    pulse: 2283.0,
-                    value: 20.0,
-                },
-                Point {
-                    pulse: 1551.0,
-                    value: 90.0,
-                },
-                Point {
-                    pulse: 820.0,
-                    value: 170.0,
-                },
-            ))
-            .limit_lower()
-            .limit_upper()
-            .build(),
+            calibration: calibrations[2],
+        },
+        ServoData {
+            pin: pins.servo6.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[3],
+        },
+        ServoData {
+            pin: pins.servo7.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[4],
+        },
+        ServoData {
+            pin: pins.servo8.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[5],
+        },
+        ServoData {
+            pin: pins.servo9.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[6],
+        },
+        ServoData {
+            pin: pins.servo10.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[7],
+        },
+        ServoData {
+            pin: pins.servo11.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[8],
         },
     ];
 
@@ -210,7 +180,7 @@ fn main() -> ! {
         clocks.peripheral_clock.freq(),
     );
 
-    let mut leg: Leg<f32, RomFuncs> = Leg::default();
+    let mut walking = Walking::<RomFuncs, DefaultConsts>::new(250.0, 170.0, 75.0);
 
     let mut servo_cluster = match build_servo_cluster(
         &mut pio0,
@@ -240,12 +210,17 @@ fn main() -> ! {
         pac::NVIC::unmask(pac::Interrupt::DMA_IRQ_0);
     }
 
-    // let movement_delay = 10.millis();
     let sensor_delay = 1.millis();
 
     // We need to use the indices provided by the cluster because the servo pin
     // numbers do not line up with the indices in the clusters and PIO.
-    let [servo1, servo2, servo3] = servo_cluster.servos();
+    let [servo1, servo2, servo3, servo4, servo5, servo6, servo7, servo8, servo9] =
+        servo_cluster.servos();
+    let servos = [
+        [servo1, servo2, servo3],
+        [servo4, servo5, servo6],
+        [servo7, servo8, servo9],
+    ];
 
     count_down.start(1.secs());
     let _ = nb::block!(count_down.wait());
@@ -262,71 +237,97 @@ fn main() -> ! {
     }
 
     let mut time = 0.0;
-    let step_delay = 2.0;
+    let mut step_delay = walking.duration() as f32;
 
     let mut now = timer.get_counter();
-
     loop {
         let last_update = now;
         now = timer.get_counter();
-        time += (now - last_update).to_millis() as f32 / 1000.0;
+        let diff = (now - last_update).to_millis();
+        time += diff as f32 / 1000.0;
         if time > step_delay {
-            time = 0.0;
+            let (_, delay) = walking.next_animation();
+            time %= step_delay;
+            step_delay = delay as f32 * 0.5;
         }
-        let circle_angle = time / step_delay * 2.0 * core::f32::consts::PI;
-        // let target = point_on_circle(0.0, -150.0, 178.0, 40.0, circle_angle);
-        let target = point_on_line(0.0, -150.0, 178.0, 90.0, circle_angle);
-        match leg.go_to(target) {
-            Ok(()) => {
-                let coxa_servo_angle = rad_to_deg(leg.coxa_servo_angle());
-                let femur_servo_angle = rad_to_deg(leg.femur_servo_angle());
-                let tibia_servo_angle = rad_to_deg(leg.tibia_servo_angle());
-                // TODO removing this line causes faults to start triggering on the real hardware.
-                // I wonder if removing this causes the LED's to be written to too quickly, or
-                // if it's a problem with updating the servo data too quickly (maybe bug in DMA
-                // mapping).
-                // defmt::info!(
-                //     "Moving to ({}, {}, {})",
-                //     coxa_servo_angle,
-                //     femur_servo_angle,
-                //     tibia_servo_angle
-                // );
-                servo_cluster.set_value(servo1, tibia_servo_angle, false);
-                servo_cluster.set_value(servo2, femur_servo_angle, false);
-                servo_cluster.set_value(servo3, coxa_servo_angle, false);
-                servo_cluster.load();
-                // let coxa_color = RGB8 {
-                //     r: coxa_servo_angle as u8,
-                //     g: 0,
-                //     b: 0,
-                // };
-                // let femur_color = RGB8 {
-                //     r: 0,
-                //     g: (femur_servo_angle + 90.0) as u8,
-                //     b: 0,
-                // };
-                // let tibia_color = RGB8 {
-                //     r: 0,
-                //     g: 0,
-                //     b: tibia_servo_angle as u8,
-                // };
-                // let _ = ws.write(brightness(
-                //     [
-                //         coxa_color,
-                //         coxa_color,
-                //         femur_color,
-                //         femur_color,
-                //         tibia_color,
-                //         tibia_color,
-                //     ]
-                //     .into_iter(),
-                //     LED_BRIGHTNESS,
-                // ));
-            }
-            Err(e) => {
-                defmt::error!("Unable to reach target: {}", e);
-            }
+        walking.walk(
+            &mut LegVisitor {
+                servo_cluster: &mut servo_cluster,
+                servos: &servos,
+                position_start: Instant::from_ticks(0),
+                servo_start: Instant::from_ticks(0),
+                timer: &timer,
+            },
+            time / step_delay,
+        );
+        servo_cluster.load();
+        count_down.start((UPDATE_MS - diff).min(0).millis());
+        let _ = nb::block!(count_down.wait());
+    }
+}
+
+struct LegVisitor<'a> {
+    servo_cluster: &'a mut ServoCluster<NUM_SERVOS, PIO0, SM0, AngularCalibration>,
+    servos: &'a [[ServoIdx; 3]; 3],
+    position_start: Instant,
+    servo_start: Instant,
+    timer: &'a Timer,
+}
+
+impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
+    fn before(&mut self, _: Point3<f32>, _: &MechaLeg<f32, RomFuncs, DefaultConsts>) {}
+
+    fn on_error(&mut self, _: &MechaLeg<f32, RomFuncs, DefaultConsts>, e: LegError<f32>) {
+        defmt::error!("Unable to reach target: {}", e);
+    }
+
+    fn after(&mut self, _: Point3<f32>, leg: &MechaLeg<f32, RomFuncs, DefaultConsts>) {
+        let coxa_servo_angle = rad_to_deg(leg.leg().coxa_servo_angle());
+        let femur_servo_angle = rad_to_deg(leg.leg().femur_servo_angle());
+        let tibia_servo_angle = rad_to_deg(leg.leg().tibia_servo_angle());
+        // TODO removing this line causes faults to start triggering on the real hardware.
+        // I wonder if removing this causes the LED's to be written to too quickly, or
+        // if it's a problem with updating the servo data too quickly (maybe bug in DMA
+        // mapping).
+        // defmt::info!(
+        //     "Moving to ({}, {}, {})",
+        //     coxa_servo_angle,
+        //     femur_servo_angle,
+        //     tibia_servo_angle
+        // );
+        let idx = leg.idx();
+        if idx < 3 {
+            let [servo1, servo2, servo3] = self.servos[idx as usize];
+            self.servo_cluster
+                .set_value(servo1, tibia_servo_angle, false);
+            self.servo_cluster
+                .set_value(servo2, femur_servo_angle, false);
+            self.servo_cluster
+                .set_value(servo3, coxa_servo_angle, false);
         }
+    }
+    fn position_start(&mut self) {
+        self.position_start = self.timer.get_counter();
+    }
+
+    fn position_end(&mut self) {
+        let now = self.timer.get_counter();
+        defmt::info!(
+            "Calculating position took {}us",
+            (now - self.position_start).to_micros() as f32
+        )
+    }
+
+    fn servo_start(&mut self) {
+        self.servo_start = self.timer.get_counter();
+    }
+
+    fn servo_end(&mut self) {
+        let now = self.timer.get_counter();
+        defmt::info!(
+            "Calculating and moving legs took {}us",
+            (now - self.servo_start).to_micros() as f32,
+        )
     }
 }
 

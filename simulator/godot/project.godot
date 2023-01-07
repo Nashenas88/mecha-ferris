@@ -15,7 +15,7 @@ _global_script_class_icons={
 [application]
 
 config/name="mecha-ferris-simulator"
-run/main_scene="res://scenes/Game.tscn"
+run/main_scene="res://scenes/Walker.tscn"
 config/icon="res://assets/godot-ferris-32x32.png"
 
 [input]

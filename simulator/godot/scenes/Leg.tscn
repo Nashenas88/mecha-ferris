@@ -1,6 +1,12 @@
-[gd_scene load_steps=4 format=2]
+[gd_scene load_steps=10 format=2]
 
 [ext_resource path="res://native/Servo.gdns" type="Script" id=1]
+[ext_resource path="res://scenes/MechaFerris-BearingBracket.gltf" type="PackedScene" id=2]
+[ext_resource path="res://scenes/MechaFerris-CoxaFemurConnector.gltf" type="PackedScene" id=3]
+[ext_resource path="res://scenes/MechaFerris-ServoModel.gltf" type="PackedScene" id=4]
+[ext_resource path="res://scenes/MechaFerris-HornBracket.gltf" type="PackedScene" id=5]
+[ext_resource path="res://scenes/MechaFerris-FemurBracket.gltf" type="PackedScene" id=6]
+[ext_resource path="res://scenes/MechaFerris-Tibia001.gltf" type="PackedScene" id=7]
 
 [sub_resource type="PhysicsMaterial" id=1]
 
@@ -10,11 +16,12 @@ radius = 3.0
 [node name="Spatial" type="Spatial"]
 
 [node name="CoxaServo" type="CSGCylinder" parent="."]
+transform = Transform( -4.37114e-08, 0, 1, 0, 1, 0, -1, 0, -4.37114e-08, 0, 0, 0 )
 radius = 5.0
 height = 20.0
 script = ExtResource( 1 )
 base/next_servo = NodePath("Spatial/FemurServo")
-base/angular_velocity = 90.0
+base/angular_velocity = 0.08
 
 [node name="CoxaLink" type="CSGCylinder" parent="CoxaServo"]
 transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 27.25 )
@@ -29,7 +36,7 @@ radius = 5.0
 height = 20.0
 script = ExtResource( 1 )
 base/next_servo = NodePath("Spatial/TibiaServo")
-base/angular_velocity = 135.0
+base/angular_velocity = 0.08
 
 [node name="FemurLink" type="CSGCylinder" parent="CoxaServo/Spatial/FemurServo"]
 transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 29.75 )
@@ -43,7 +50,7 @@ transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 59.5 )
 radius = 5.0
 height = 20.0
 script = ExtResource( 1 )
-base/angular_velocity = 135.0
+base/angular_velocity = 0.08
 
 [node name="TibiaLink" type="CSGCylinder" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo"]
 transform = Transform( 1, 0, 0, 0, -1.62921e-07, -1, 0, 1, -1.62921e-07, 0, 0, 92.5 )
@@ -60,3 +67,45 @@ shape = SubResource( 2 )
 
 [node name="CSGSphere" type="CSGSphere" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo/TibiaLink/RigidBody"]
 radius = 3.0
+
+[node name="Spatial" type="Spatial" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo"]
+transform = Transform( -4.37114e-08, -8.74228e-08, -1, 0, -1, 8.74228e-08, -1, 3.55271e-15, 4.37114e-08, 0, -15, 0 )
+
+[node name="MechaFerris-BearingBracket" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo/Spatial" instance=ExtResource( 2 )]
+transform = Transform( 1000, 0, 0, 0, 1000, 0, 0, 0, 1000, 0, 0, 0 )
+
+[node name="MechaFerris-HornBracket" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo/Spatial" instance=ExtResource( 5 )]
+transform = Transform( 1000, 0, 0, 0, 1000, 0, 0, 0, 1000, 0, 0, 0 )
+
+[node name="MechaFerris-Tibia001" parent="CoxaServo/Spatial/FemurServo/Spatial/TibiaServo/Spatial" instance=ExtResource( 7 )]
+transform = Transform( -4.37114e-05, 1000, 0, 4.37114e-05, 1.91069e-12, -1000, -1000, -4.37114e-05, -4.37114e-05, -25, -16, -15 )
+
+[node name="MechaFerris-ServoModel" parent="CoxaServo/Spatial/FemurServo" instance=ExtResource( 4 )]
+transform = Transform( 4.37114e-05, 0, -1000, -8.74228e-05, -1000, 0, -1000, 8.74228e-05, -4.37114e-05, 0, -14, -1 )
+
+[node name="MechaFerris-FemurBracket" parent="CoxaServo/Spatial/FemurServo" instance=ExtResource( 6 )]
+transform = Transform( -4.37114e-05, 1000, 0, 4.37114e-05, 1.91069e-12, 1000, 1000, 4.37114e-05, -4.37114e-05, 0, -6, -14.25 )
+
+[node name="MechaFerris-ServoModel2" parent="CoxaServo/Spatial/FemurServo" instance=ExtResource( 4 )]
+transform = Transform( 4.37114e-05, 3.82137e-12, 1000, 8.74228e-05, -1000, 0, 1000, 8.74228e-05, -4.37114e-05, 0, -14, 59.5 )
+
+[node name="Spatial2" type="Spatial" parent="CoxaServo"]
+transform = Transform( 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 10, 0 )
+
+[node name="MechaFerris-HornBracket" parent="CoxaServo/Spatial2" instance=ExtResource( 5 )]
+transform = Transform( -4.37114e-05, -8.74228e-05, -1000, 0, -1000, 8.74228e-05, -1000, 3.82137e-12, 4.37114e-05, 0, 6.5, 0 )
+
+[node name="MechaFerris-BearingBracket" parent="CoxaServo/Spatial2" instance=ExtResource( 2 )]
+transform = Transform( -4.37114e-05, 0, 1000, 0, 1000, 0, -1000, 0, -4.37114e-05, 0, 7, 0 )
+
+[node name="MechaFerris-CoxaFemurConnector" parent="CoxaServo/Spatial2" instance=ExtResource( 3 )]
+transform = Transform( 1000, 0, 0, 0, -4.37114e-05, 1000, 0, -1000, -4.37114e-05, 0, -10, 28.5 )
+
+[node name="MechaFerris-BearingBracket2" parent="CoxaServo/Spatial2" instance=ExtResource( 2 )]
+transform = Transform( 1.19249e-05, -1000, 4.37114e-05, 0, -4.37114e-05, -1000, 1000, 1.19249e-05, -5.21253e-13, -18, -9.5, 53.5 )
+
+[node name="MechaFerris-HornBracket2" parent="CoxaServo/Spatial2" instance=ExtResource( 5 )]
+transform = Transform( -4.37114e-05, 1000, -1.19249e-05, 0, 1.19249e-05, 1000, 1000, 4.37114e-05, -5.21253e-13, -19.5, -10, 53.5 )
+
+[node name="MechaFerris-ServoModel" parent="." instance=ExtResource( 4 )]
+transform = Transform( 1000, 0, 0, 0, 1000, 0, 0, 0, 1000, 0, 12, 0 )

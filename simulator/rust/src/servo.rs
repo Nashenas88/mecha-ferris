@@ -48,7 +48,8 @@ impl Servo {
 
         if self.target_angle != self.angle {
             let angle_error = self.target_angle - self.angle;
-            self.angle += angle_error.signum() * self.angular_velocity * 2.0 * delta as f32;
+            self.angle += angle_error.signum()
+                * (60.0 / self.angular_velocity * delta as f32).max(angle_error.abs());
             if (self.target_angle - self.angle).signum() != angle_error.signum() {
                 self.angle = self.target_angle;
             }

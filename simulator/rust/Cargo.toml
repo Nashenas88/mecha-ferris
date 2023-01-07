@@ -9,4 +9,4 @@ crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
 gdnative = "0.11.0"
-kinematics = { path = "../../kinematics"}
+kinematics = { path = "../../kinematics", features = ["std"]}

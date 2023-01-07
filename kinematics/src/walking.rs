@@ -1,6 +1,6 @@
 use nalgebra::{Matrix4, Point3, Rotation3, Scalar, Translation3, UnitQuaternion, Vector3 as Vec3};
 
-use crate::animation::AnimationManager;
+use crate::animation::{Animation, AnimationManager};
 use crate::leg::LegError;
 use crate::{ExpensiveMath, Leg, LegConsts};
 
@@ -27,6 +27,10 @@ impl<T, C> Walking<T, C> {
             body_height: initial_body_height,
             body_radius,
         }
+    }
+
+    pub fn state(&self) -> Animation {
+        self.animation_manager.animation()
     }
 
     pub fn duration(&self) -> f64 {
@@ -136,14 +140,20 @@ where
     where
         V: VisitLeg<f32, T, C>,
     {
+        // leg_visitor.position_start();
         // Get the targets for each foot.
         let mut targets = self
             .animation_manager
             .targets::<T>(self.walking_radius, time);
+        // leg_visitor.position_end();
 
         if false {
-            self.body_rotation = UnitQuaternion::from_axis_angle(&Vec3::y_axis(), time)
-                * UnitQuaternion::from_axis_angle(&Vec3::x_axis(), core::f32::consts::FRAC_PI_8);
+            self.body_rotation =
+                UnitQuaternion::from_axis_angle(&Vec3::y_axis(), time * core::f32::consts::TAU)
+                    * UnitQuaternion::from_axis_angle(
+                        &Vec3::x_axis(),
+                        core::f32::consts::FRAC_PI_8,
+                    );
             // let point = // (Translation3::new(0.0, self.body_height as f32, 0.0).to_homogeneous()
             //     //*
             //     self.body_rotation.to_homogeneous()
@@ -155,6 +165,7 @@ where
             }
         }
 
+        // leg_visitor.servo_start();
         // Calculate the servo angles for each leg.
         for (target, leg) in targets.into_iter().zip(self.legs.iter_mut()) {
             leg_visitor.before(target, leg);
@@ -170,6 +181,7 @@ where
 
             leg_visitor.after(target, leg);
         }
+        // leg_visitor.servo_end();
     }
 }
 
@@ -180,6 +192,10 @@ where
     fn before(&mut self, target: Point3<F>, leg: &MechaLeg<F, T, C>);
     fn on_error(&mut self, leg: &MechaLeg<F, T, C>, error: LegError<F>);
     fn after(&mut self, target: Point3<F>, leg: &MechaLeg<F, T, C>);
+    fn position_start(&mut self);
+    fn position_end(&mut self);
+    fn servo_start(&mut self);
+    fn servo_end(&mut self);
 }
 
 impl<F, T, C> VisitLeg<F, T, C> for ()
@@ -189,4 +205,8 @@ where
     fn before(&mut self, _: Point3<F>, _: &MechaLeg<F, T, C>) {}
     fn on_error(&mut self, _: &MechaLeg<F, T, C>, _: LegError<F>) {}
     fn after(&mut self, _: Point3<F>, _: &MechaLeg<F, T, C>) {}
+    fn position_start(&mut self) {}
+    fn position_end(&mut self) {}
+    fn servo_start(&mut self) {}
+    fn servo_end(&mut self) {}
 }

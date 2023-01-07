@@ -25,6 +25,18 @@ fn servo_name<T, C>(leg: &MechaLeg<f32, T, C>) -> &'static str {
     }
 }
 
+fn servo_base(idx: u8) -> &'static str {
+    match idx {
+        0 => "Body/Spatial1",
+        1 => "Body/Spatial2",
+        2 => "Body/Spatial3",
+        3 => "Body/Spatial4",
+        4 => "Body/Spatial5",
+        5 => "Body/Spatial6",
+        _ => unsafe { unreachable_unchecked() },
+    }
+}
+
 /// The Walker "class"
 #[derive(NativeClass)]
 #[inherit(Spatial)]
@@ -97,6 +109,7 @@ impl Walker {
         if input.is_action_just_pressed("change_space", true) {
             for node in self.tracking_nodes.drain(..) {
                 owner.remove_child(node);
+                node.assume_unique().queue_free();
             }
             self.reset = false;
             self.walking.next_animation();
@@ -130,6 +143,21 @@ impl Walker {
         let safe_node = safe_node.get_node("Body").unwrap();
         let body = body_from_node(&safe_node);
         body.set_radius(radius);
+
+        for i in 0..6 {
+            let node: Ref<Node> = unsafe { owner.upcast::<Node>().assume_shared() };
+            let safe_node = unsafe { node.assume_safe() };
+            let safe_node = safe_node.get_node(servo_base(i as u8)).unwrap();
+            let node = unsafe { safe_node.assume_safe() };
+            let spatial = node.cast::<Spatial>().unwrap();
+
+            let angle = i as f32 * std::f32::consts::FRAC_PI_3;
+            spatial.set_translation(Vector3::new(
+                radius as f32 * angle.sin(),
+                0.0,
+                radius as f32 * angle.cos(),
+            ));
+        }
     }
 
     fn home_process(&mut self, owner: &Spatial) {
@@ -148,12 +176,13 @@ impl Walker {
 
     unsafe fn follow_process(&mut self, owner: &Spatial) {
         if self.time >= self.step_delay {
-            self.time = 0.0;
+            self.time %= self.step_delay;
             let (reset, animation_duration) = self.walking.next_animation();
             self.reset = !reset;
             if !self.reset {
                 for node in self.tracking_nodes.drain(..) {
                     owner.remove_child(node);
+                    node.assume_unique().queue_free();
                 }
             }
             self.step_delay = animation_duration * self.anim_scale;
@@ -168,7 +197,7 @@ impl Walker {
         // );
 
         // Figure out how far into the animation we need to render.
-        let interpolation = (self.time / self.step_delay) * std::f64::consts::TAU;
+        let interpolation = self.time / self.step_delay;
         let mut walker_visitor = WalkerVisitor {
             owner,
             reset: self.reset,
@@ -239,6 +268,11 @@ impl<'a> VisitLeg<f32, StdMath, DefaultConsts> for HomingVisitor<'a> {
             Walker::move_leg(self.owner, leg);
         }
     }
+
+    fn position_start(&mut self) {}
+    fn position_end(&mut self) {}
+    fn servo_start(&mut self) {}
+    fn servo_end(&mut self) {}
 }
 
 struct WalkerVisitor<'a> {
@@ -274,6 +308,11 @@ impl<'a> VisitLeg<f32, StdMath, DefaultConsts> for WalkerVisitor<'a> {
     fn after(&mut self, _: Point3<f32>, leg: &MechaLeg<f32, StdMath, DefaultConsts>) {
         unsafe { Walker::move_leg(self.owner, leg) }
     }
+
+    fn position_start(&mut self) {}
+    fn position_end(&mut self) {}
+    fn servo_start(&mut self) {}
+    fn servo_end(&mut self) {}
 }
 
 fn body_from_node(node: &Ref<Node>) -> TRef<'_, CSGCylinder> {
