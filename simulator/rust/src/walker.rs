@@ -43,6 +43,7 @@ fn servo_base(idx: u8) -> &'static str {
 #[register_with(Self::register_builder)]
 pub struct Walker {
     time: f64,
+    height_time: f64,
     step_delay: f64,
     #[property]
     anim_scale: f64,
@@ -64,6 +65,9 @@ pub struct Walker {
     tracking_nodes: Vec<Ref<CSGSphere>>,
 }
 
+const FREQUENCY: f64 = 2.0;
+const HEIGHT_VARIATION: f64 = 20.0;
+
 enum RobotState {
     Homing,
     Following,
@@ -80,6 +84,7 @@ impl Walker {
     fn new(_owner: &Spatial) -> Self {
         Walker {
             time: 0.0,
+            height_time: 0.0,
             step_delay: 0.0,
             anim_scale: 1.0,
             walking: Walking::new(DEFAULT_RADIUS * 1.3, DEFAULT_HEIGHT, DEFAULT_RADIUS),
@@ -116,6 +121,7 @@ impl Walker {
         }
 
         self.time += delta;
+        self.height_time += delta;
 
         match self.robot_state {
             RobotState::Homing => self.home_process(owner),
@@ -188,13 +194,11 @@ impl Walker {
             self.step_delay = animation_duration * self.anim_scale;
         }
 
-        // self.set_body_height(
-        //     owner,
-        //     self.base_height
-        //         + (HEIGHT_MOVEMENT
-        //             * (self.time * 4.0 * std::f64::consts::PI / self.step_delay).sin()
-        //             + HEIGHT_MOVEMENT),
-        // );
+        let next_height = self.base_height
+            - HEIGHT_VARIATION
+                * (self.height_time * FREQUENCY * core::f64::consts::FRAC_PI_2).sin();
+        godot_print!("Next height is {}", next_height);
+        self.set_body_height(owner, next_height);
 
         // Figure out how far into the animation we need to render.
         let interpolation = self.time / self.step_delay;

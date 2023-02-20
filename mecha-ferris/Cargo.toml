@@ -9,16 +9,21 @@ cortex-m = "0.7"
 cortex-m-rt = "0.7"
 embedded-hal = { version = "0.2.5", features = ["unproven"] }
 critical-section = "1.1.0"
-defmt = "0.3"
-defmt-rtt = "0.4"
+defmt = { version = "0.3", optional = true }
+defmt-rtt = { version = "0.4", optional = true }
 fugit = "0.3.6"
-panic-probe = { version = "0.3", features = ["print-defmt"] }
+panic-halt = { version = "0.2.0", optional = true }
+panic-probe = { version = "0.3", optional = true }
 nb = "1.0.0"
-pimoroni-servo2040 = "0.2.0"
+pimoroni-servo2040 = "0.3.0"
 smart-leds = "0.3.0"
-ws2812-pio = "0.5.0"
-servo-pio = { git = "https://github.com/nashenas88/servo-pio", tag = "v0.1.0", features = ["defmt"] }
-kinematics = { path = "../kinematics", features = ["defmt"] }
+ws2812-pio = "0.6.0"
+servo-pio = { git = "https://github.com/nashenas88/servo-pio", tag = "v0.1.0" }
+kinematics = { path = "../kinematics" }
+
+[features]
+default = ["panic-halt"]
+defmt = ["dep:defmt", "defmt-rtt", "servo-pio/defmt", "kinematics/defmt", "panic-probe/print-defmt"]
 
 # cargo build/run
 [profile.dev]

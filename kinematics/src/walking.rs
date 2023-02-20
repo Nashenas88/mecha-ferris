@@ -142,28 +142,31 @@ where
     {
         // leg_visitor.position_start();
         // Get the targets for each foot.
-        let mut targets = self
+        let targets = self
             .animation_manager
             .targets::<T>(self.walking_radius, time);
         // leg_visitor.position_end();
 
-        if false {
-            self.body_rotation =
-                UnitQuaternion::from_axis_angle(&Vec3::y_axis(), time * core::f32::consts::TAU)
-                    * UnitQuaternion::from_axis_angle(
-                        &Vec3::x_axis(),
-                        core::f32::consts::FRAC_PI_8,
-                    );
-            // let point = // (Translation3::new(0.0, self.body_height as f32, 0.0).to_homogeneous()
-            //     //*
-            //     self.body_rotation.to_homogeneous()
-            //     //* Translation3::new(0.0, -self.body_height as f32, 0.0).to_homogeneous())
-            // .transform_point(&Point3::new(10.0, 0.0, 0.0));
+        // if false {
+        //     // self.body_rotation =
+        //     //     UnitQuaternion::from_axis_angle(&Vec3::y_axis(), time * core::f32::consts::TAU)
+        //     //         * UnitQuaternion::from_axis_angle(
+        //     //             &Vec3::x_axis(),
+        //     //             core::f32::consts::FRAC_PI_8,
+        //     //         );
+        //     // let point = //(Translation3::new(0.0, self.body_height as f32, 0.0).to_homogeneous()
+        //     //     //*
+        //     //     self.body_rotation.to_homogeneous()
+        //     //     //* Translation3::new(0.0, -self.body_height as f32, 0.0).to_homogeneous())
+        //     // .transform_point(&Point3::new(10.0, 0.0, 0.0));
 
-            for target in &mut targets {
-                *target = self.body_rotation.transform_point(target);
-            }
-        }
+        //     // for target in &mut targets {
+        //     //     *target = self.body_rotation.transform_point(target);
+        //     // }
+        //     // for target in &mut targets {
+        //     //     *target = Translation3::new(0.0, self.height_offset, 0.0).transform_point(target);
+        //     // }
+        // }
 
         // leg_visitor.servo_start();
         // Calculate the servo angles for each leg.

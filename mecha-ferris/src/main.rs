@@ -2,19 +2,27 @@
 #![no_main]
 
 use core::iter::once;
+#[cfg(feature = "defmt")]
 use defmt::Format;
+#[cfg(feature = "defmt")]
 use defmt_rtt as _;
 use embedded_hal::timer::CountDown;
 use fugit::ExtU64;
 use kinematics::walking::{MechaLeg, VisitLeg, Walking};
 use kinematics::{ComplexField, DefaultConsts, ExpensiveMath, LegError, Point3};
+#[cfg(feature = "defmt")]
 use mecha_ferris::analog_mux::{AnalogMux, CurrentSensor};
+#[cfg(feature = "defmt")]
 use mecha_ferris::flexible_input::FlexibleInput;
+#[cfg(not(feature = "defmt"))]
+use panic_halt as _;
+#[cfg(feature = "defmt")]
 use panic_probe as _;
 use pimoroni_servo2040::hal::clocks::SystemClock;
 use pimoroni_servo2040::hal::dma::{Channel, ChannelIndex, DMAExt, CH0, CH1};
 use pimoroni_servo2040::hal::gpio::{Error as GpioError, FunctionConfig, FunctionPio0};
 use pimoroni_servo2040::hal::pio::{PIOExt, StateMachineIndex, UninitStateMachine, PIO, SM0};
+use pimoroni_servo2040::hal::rom_data::float_funcs;
 use pimoroni_servo2040::hal::timer::Instant;
 use pimoroni_servo2040::hal::{self, pac, Clock, Timer};
 use pimoroni_servo2040::pac::{interrupt, PIO0};
@@ -26,11 +34,12 @@ use servo_pio::servo_cluster::{
 use smart_leds::{brightness, SmartLedsWrite, RGB8};
 use ws2812_pio::Ws2812Direct;
 
-use pimoroni_servo2040::hal::rom_data::float_funcs;
+const LED_BRIGHTNESS: u8 = 8;
+const SERVOS_PER_LEG: usize = 3;
+const NUM_LEGS: usize = 6;
+const NUM_SERVOS: usize = SERVOS_PER_LEG * NUM_LEGS;
+const NUM_CHANNELS: usize = 2;
 
-const LED_BRIGHTNESS: u8 = 16;
-const NUM_SERVOS: usize = 9;
-const NUM_CHANNELS: usize = 12;
 static mut STATE1: Option<GlobalState<CH0, CH1, PIO0, SM0>> = {
     const NONE_HACK: Option<GlobalState<CH0, CH1, PIO0, SM0>> = None;
     NONE_HACK
@@ -41,6 +50,8 @@ static mut GLOBALS: GlobalStates<NUM_CHANNELS> = {
         states: [NONE_HACK; NUM_CHANNELS],
     }
 };
+
+#[cfg(feature = "defmt")]
 const SAMPLES: usize = 10;
 const UPDATE_MS: u64 = 50;
 
@@ -115,51 +126,79 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    let mut adc = hal::Adc::new(pac.ADC, &mut pac.RESETS);
-    let mut analog_mux = AnalogMux::new(
-        pins.adc_addr_0.into_mode(),
-        pins.adc_addr_1.into_mode(),
-        pins.adc_addr_2.into_mode(),
-        FlexibleInput::from(pins.shared_adc.into_floating_input()),
-    );
-
     let calibrations = calibrations::calibrations();
     let servo_pins: [_; NUM_SERVOS] = [
         ServoData {
-            pin: pins.servo3.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo1.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[0],
         },
         ServoData {
-            pin: pins.servo4.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo2.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[1],
         },
         ServoData {
-            pin: pins.servo5.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo3.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[2],
         },
         ServoData {
-            pin: pins.servo6.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo4.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[3],
         },
         ServoData {
-            pin: pins.servo7.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo5.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[4],
         },
         ServoData {
-            pin: pins.servo8.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo6.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[5],
         },
         ServoData {
-            pin: pins.servo9.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo7.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[6],
         },
         ServoData {
-            pin: pins.servo10.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo8.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[7],
         },
         ServoData {
-            pin: pins.servo11.into_mode::<FunctionPio0>().into(),
+            pin: pins.servo9.into_mode::<FunctionPio0>().into(),
             calibration: calibrations[8],
+        },
+        ServoData {
+            pin: pins.servo10.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[9],
+        },
+        ServoData {
+            pin: pins.servo11.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[10],
+        },
+        ServoData {
+            pin: pins.servo12.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[11],
+        },
+        ServoData {
+            pin: pins.servo13.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[12],
+        },
+        ServoData {
+            pin: pins.servo14.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[13],
+        },
+        ServoData {
+            pin: pins.servo15.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[14],
+        },
+        ServoData {
+            pin: pins.servo16.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[15],
+        },
+        ServoData {
+            pin: pins.servo17.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[16],
+        },
+        ServoData {
+            pin: pins.servo18.into_mode::<FunctionPio0>().into(),
+            calibration: calibrations[17],
         },
     ];
 
@@ -194,7 +233,10 @@ fn main() -> ! {
     ) {
         Ok(cluster) => cluster,
         Err(e) => {
-            defmt::error!("Failed to build servo cluster: {:?}", e);
+            #[cfg(feature = "defmt")]
+            {
+                defmt::error!("Failed to build servo cluster: {:?}", e);
+            }
             let _ = ws.write(brightness(
                 once(RGB8 { r: 255, g: 0, b: 0 }),
                 LED_BRIGHTNESS,
@@ -210,21 +252,33 @@ fn main() -> ! {
         pac::NVIC::unmask(pac::Interrupt::DMA_IRQ_0);
     }
 
-    let sensor_delay = 1.millis();
-
     // We need to use the indices provided by the cluster because the servo pin
     // numbers do not line up with the indices in the clusters and PIO.
-    let [servo1, servo2, servo3, servo4, servo5, servo6, servo7, servo8, servo9] =
+    let [servo1, servo2, servo3, servo4, servo5, servo6, servo7, servo8, servo9, servo10, servo11, servo12, servo13, servo14, servo15, servo16, servo17, servo18] =
         servo_cluster.servos();
     let servos = [
         [servo1, servo2, servo3],
         [servo4, servo5, servo6],
         [servo7, servo8, servo9],
+        [servo10, servo11, servo12],
+        [servo13, servo14, servo15],
+        [servo16, servo17, servo18],
     ];
 
     count_down.start(1.secs());
     let _ = nb::block!(count_down.wait());
+    #[cfg(feature = "defmt")]
     {
+        let sensor_delay = 1.millis();
+
+        let mut adc = hal::Adc::new(pac.ADC, &mut pac.RESETS);
+        let mut analog_mux = AnalogMux::new(
+            pins.adc_addr_0.into_mode(),
+            pins.adc_addr_1.into_mode(),
+            pins.adc_addr_2.into_mode(),
+            FlexibleInput::from(pins.shared_adc.into_floating_input()),
+        );
+
         let mut analog = analog_mux.reader::<CurrentSensor>(&mut count_down);
         let mut current = 0.0;
         for _ in 0..SAMPLES {
@@ -248,18 +302,30 @@ fn main() -> ! {
         if time > step_delay {
             let (_, delay) = walking.next_animation();
             time %= step_delay;
-            step_delay = delay as f32 * 0.5;
+            step_delay = delay as f32 * 2.0;
         }
-        walking.walk(
-            &mut LegVisitor {
-                servo_cluster: &mut servo_cluster,
-                servos: &servos,
-                position_start: Instant::from_ticks(0),
-                servo_start: Instant::from_ticks(0),
-                timer: &timer,
-            },
-            time / step_delay,
-        );
+        let mut leg_visitor = LegVisitor {
+            servo_cluster: &mut servo_cluster,
+            servos: &servos,
+            position_start: Instant::from_ticks(0),
+            servo_start: Instant::from_ticks(0),
+            timer: &timer,
+            errors: [false; 6],
+        };
+        walking.walk(&mut leg_visitor, time / step_delay);
+
+        // Update led color based on whether any errors were encountered for that particular leg.
+        let _ = ws.write(brightness(
+            leg_visitor.errors.into_iter().map(|e| {
+                if e {
+                    RGB8 { r: 255, g: 0, b: 0 }
+                } else {
+                    RGB8 { r: 0, g: 255, b: 0 }
+                }
+            }),
+            LED_BRIGHTNESS,
+        ));
+
         servo_cluster.load();
         count_down.start((UPDATE_MS - diff).min(0).millis());
         let _ = nb::block!(count_down.wait());
@@ -268,18 +334,26 @@ fn main() -> ! {
 
 struct LegVisitor<'a> {
     servo_cluster: &'a mut ServoCluster<NUM_SERVOS, PIO0, SM0, AngularCalibration>,
-    servos: &'a [[ServoIdx; 3]; 3],
+    servos: &'a [[ServoIdx; SERVOS_PER_LEG]; NUM_LEGS],
+    #[cfg_attr(not(feature = "defmt"), allow(dead_code))]
     position_start: Instant,
+    #[cfg_attr(not(feature = "defmt"), allow(dead_code))]
     servo_start: Instant,
+    #[cfg_attr(not(feature = "defmt"), allow(dead_code))]
     timer: &'a Timer,
+    errors: [bool; NUM_LEGS],
 }
 
 impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
     fn before(&mut self, _: Point3<f32>, _: &MechaLeg<f32, RomFuncs, DefaultConsts>) {}
 
+    #[cfg(feature = "defmt")]
     fn on_error(&mut self, _: &MechaLeg<f32, RomFuncs, DefaultConsts>, e: LegError<f32>) {
         defmt::error!("Unable to reach target: {}", e);
     }
+
+    #[cfg(not(feature = "defmt"))]
+    fn on_error(&mut self, _: &MechaLeg<f32, RomFuncs, DefaultConsts>, _: LegError<f32>) {}
 
     fn after(&mut self, _: Point3<f32>, leg: &MechaLeg<f32, RomFuncs, DefaultConsts>) {
         let coxa_servo_angle = rad_to_deg(leg.leg().coxa_servo_angle());
@@ -296,20 +370,21 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
         //     tibia_servo_angle
         // );
         let idx = leg.idx();
-        if idx < 3 {
-            let [servo1, servo2, servo3] = self.servos[idx as usize];
-            self.servo_cluster
-                .set_value(servo1, tibia_servo_angle, false);
-            self.servo_cluster
-                .set_value(servo2, femur_servo_angle, false);
-            self.servo_cluster
-                .set_value(servo3, coxa_servo_angle, false);
-        }
+        let [servo1, servo2, servo3] = self.servos[idx as usize];
+        self.servo_cluster
+            .set_value(servo1, tibia_servo_angle, false);
+        self.servo_cluster
+            .set_value(servo2, femur_servo_angle, false);
+        self.servo_cluster
+            .set_value(servo3, coxa_servo_angle, false);
     }
+
+    #[cfg(feature = "defmt")]
     fn position_start(&mut self) {
         self.position_start = self.timer.get_counter();
     }
 
+    #[cfg(feature = "defmt")]
     fn position_end(&mut self) {
         let now = self.timer.get_counter();
         defmt::info!(
@@ -318,10 +393,12 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
         )
     }
 
+    #[cfg(feature = "defmt")]
     fn servo_start(&mut self) {
         self.servo_start = self.timer.get_counter();
     }
 
+    #[cfg(feature = "defmt")]
     fn servo_end(&mut self) {
         let now = self.timer.get_counter();
         defmt::info!(
@@ -329,6 +406,18 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
             (now - self.servo_start).to_micros() as f32,
         )
     }
+
+    #[cfg(not(feature = "defmt"))]
+    fn position_start(&mut self) {}
+
+    #[cfg(not(feature = "defmt"))]
+    fn position_end(&mut self) {}
+
+    #[cfg(not(feature = "defmt"))]
+    fn servo_start(&mut self) {}
+
+    #[cfg(not(feature = "defmt"))]
+    fn servo_end(&mut self) {}
 }
 
 #[allow(dead_code)]
@@ -407,7 +496,7 @@ impl CalibrationData for Calibrating {
     }
 }
 
-#[derive(Format)]
+#[cfg_attr(feature = "defmt", derive(Format))]
 enum BuildError {
     Gpio(GpioError),
     Build(ServoClusterBuilderError),

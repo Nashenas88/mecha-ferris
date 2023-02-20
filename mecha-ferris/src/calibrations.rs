@@ -1,5 +1,7 @@
 use servo_pio::calibration::{AngularCalibration, Calibration, Point};
 
+use crate::NUM_SERVOS;
+
 macro_rules! calib {
     (
         $min_pulse:literal, $min_value:literal;
@@ -26,7 +28,7 @@ macro_rules! calib {
     };
 }
 
-pub fn calibrations() -> [Calibration<AngularCalibration>; 9] {
+pub fn calibrations() -> [Calibration<AngularCalibration>; NUM_SERVOS] {
     [
         // Leg 1
         // Tibia
@@ -91,6 +93,65 @@ pub fn calibrations() -> [Calibration<AngularCalibration>; 9] {
             2091.0, 20.0;
             1403.0, 90.0;
             753.0, 170.0;
+        ),
+        // Leg 4
+        // Tibia
+        calib!(
+            2027.0, 0.0;
+            1556.0, 67.5;
+            706.0, 135.0;
+        ),
+        // Femur
+        calib!(
+            715.0, -90.0;
+            1425.0, -22.5;
+            2210.0, 45.0;
+        ),
+        // Coxa
+        calib!(
+            715.0, 20.0;
+            1480.0, 90.0;
+            2175.0, 155.0;
+        ),
+        //
+        // Leg 5
+        // Tibia
+        calib!(
+            2027.0, 0.0;
+            1556.0, 67.5;
+            706.0, 135.0;
+        ),
+        // Femur
+        calib!(
+            730.0, -90.0;
+            1448.0, -22.5;
+            2170.0, 45.0;
+        ),
+        // Coxa
+        calib!(
+            567.0, 20.0;
+            1312.0, 90.0;
+            1992.0, 155.0;
+        ),
+        //
+        // Leg 6
+        // Tibia
+        calib!(
+            2027.0, 0.0;
+            1556.0, 67.5;
+            706.0, 135.0;
+        ),
+        // Femur
+        calib!(
+            710.0, -90.0;
+            1407.0, -22.5;
+            2165.0, 45.0;
+        ),
+        // Coxa
+        calib!(
+            710.0, 20.0;
+            1475.0, 90.0;
+            2170.0, 155.0;
         ),
     ]
 }

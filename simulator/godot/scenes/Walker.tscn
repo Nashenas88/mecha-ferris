@@ -15,9 +15,9 @@ albedo_color = Color( 1, 0, 0, 0.784314 )
 [node name="Spatial" type="Spatial"]
 transform = Transform( 0.3, 0, 0, 0, 0.3, 0, 0, 0, 0.3, 0, 0, 0 )
 script = ExtResource( 3 )
-anim_scale = 1.0
+anim_scale = 0.75
 base_radius = 75.0
-base_height = 190.0
+base_height = 170.0
 walking_radius = 250.0
 
 [node name="Camera" type="Camera" parent="."]

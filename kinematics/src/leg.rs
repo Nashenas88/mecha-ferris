@@ -35,8 +35,7 @@ pub struct DefaultConsts;
 impl LegConsts<f32> for DefaultConsts {
     const COXA_LENGTH: f32 = 54.5;
     const FEMUR_LENGTH: f32 = 59.5;
-    // const TIBIA_LENGTH: f32 = 175.0;
-    const TIBIA_LENGTH: f32 = 185.0;
+    const TIBIA_LENGTH: f32 = 175.0;
 }
 
 #[derive(Copy, Clone, Debug, PartialEq)]
