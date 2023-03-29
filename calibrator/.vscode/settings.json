@@ -1,0 +1,8 @@
+{
+    "rust-analyzer.cargo.unsetTest": [
+        "core",
+        "calibrator"
+    ],
+    "rust-analyzer.imports.prefer.no.std": true,
+    "rust-analyzer.check.allTargets": false
+}
