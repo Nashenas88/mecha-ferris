@@ -18,7 +18,7 @@ nb = "1.0.0"
 pimoroni-servo2040 = "0.3.0"
 smart-leds = "0.3.0"
 ws2812-pio = "0.6.0"
-servo-pio = { git = "https://github.com/nashenas88/servo-pio", tag = "v0.1.0" }
+servo-pio = { version = "0.1.0" }
 kinematics = { path = "../kinematics" }
 
 [features]
@@ -76,6 +76,3 @@ debug-assertions = false
 incremental = false
 lto = 'fat'
 opt-level = 3
-
-[patch.crates-io]
-rp2040-hal = { git = "https://github.com/rp-rs/rp-hal", rev = "33dd1c6f6abcdccb838a38bbf9fe409b211990d7" }
