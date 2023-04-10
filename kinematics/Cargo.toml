@@ -10,6 +10,7 @@ edition = "2021"
 nalgebra = { version = "0.31.4", default-features = false, features = ["libm"] }
 defmt = { version = "0.3.2", optional = true }
 num-traits = { version = "0.2", default-features = false }
+state = { path = "../state" }
 
 [dev-dependencies]
 approx = "0.5.1"

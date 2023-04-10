@@ -7,6 +7,8 @@ use gdnative::api::*;
 use gdnative::prelude::*;
 use kinematics::walking::{MechaLeg, VisitLeg, Walking};
 use kinematics::{DefaultConsts, LegConsts, LegError, Point3};
+use state::RobotState;
+use state::StateMachine;
 
 const BODY_RADIUS: f32 = 75.0;
 const DEFAULT_RADIUS: f32 = BODY_RADIUS + DefaultConsts::COXA_LENGTH + 20.0;
@@ -68,11 +70,6 @@ pub struct Walker {
 const FREQUENCY: f64 = 2.0;
 const HEIGHT_VARIATION: f64 = 20.0;
 
-enum RobotState {
-    Homing,
-    Following,
-}
-
 #[methods]
 impl Walker {
     // Register the builder for methods, properties and/or signals.
@@ -82,12 +79,16 @@ impl Walker {
 
     /// The "constructor" of the class.
     fn new(_owner: &Spatial) -> Self {
+        let mut state = RobotState::new();
+        state.leg_radius = DEFAULT_RADIUS * 1.3;
+        state.body_translation.y = DEFAULT_HEIGHT;
+        state.state_machine = StateMachine::Homing;
         Walker {
             time: 0.0,
             height_time: 0.0,
             step_delay: 0.0,
             anim_scale: 1.0,
-            walking: Walking::new(DEFAULT_RADIUS * 1.3, DEFAULT_HEIGHT, DEFAULT_RADIUS),
+            walking: Walking::new(DEFAULT_RADIUS),
             walking_radius: (DEFAULT_RADIUS * 1.3) as f64,
             base_radius: DEFAULT_RADIUS as f64,
             base_height: DEFAULT_HEIGHT as f64,
@@ -95,7 +96,7 @@ impl Walker {
             target: NodePath::default(),
             target_coxa_space: NodePath::default(),
             target_femur_space: NodePath::default(),
-            robot_state: RobotState::Homing,
+            robot_state: state,
             tracking_nodes: vec![],
         }
     }
@@ -123,14 +124,15 @@ impl Walker {
         self.time += delta;
         self.height_time += delta;
 
-        match self.robot_state {
-            RobotState::Homing => self.home_process(owner),
-            RobotState::Following => self.follow_process(owner),
+        match self.robot_state.state_machine {
+            StateMachine::Homing => self.home_process(owner),
+            StateMachine::Looping => self.follow_process(owner),
+            _ => {}
         }
     }
 
     fn set_body_height(&mut self, owner: &Spatial, height: f64) {
-        self.walking.set_body_height(height as f32);
+        self.robot_state.body_translation.y = height as f32;
         let node: Ref<Node> = unsafe { owner.upcast::<Node>().assume_shared() };
         let safe_node = unsafe { node.assume_safe() };
         let safe_node = safe_node.get_node("Body").unwrap();
@@ -169,12 +171,13 @@ impl Walker {
     fn home_process(&mut self, owner: &Spatial) {
         if self.time > 2.0 {
             self.time = 0.0;
-            self.robot_state = RobotState::Following;
+            self.robot_state.state_machine = StateMachine::Looping;
             return;
         }
 
         let mut homing_visitor = HomingVisitor { owner };
         self.walking.home(
+            &self.robot_state,
             &mut homing_visitor,
             self.time as f32 / 2.0 * core::f32::consts::TAU,
         );
@@ -207,7 +210,8 @@ impl Walker {
             reset: self.reset,
             tracking_nodes: &mut self.tracking_nodes,
         };
-        self.walking.walk(&mut walker_visitor, interpolation as f32);
+        self.walking
+            .walk(&self.robot_state, &mut walker_visitor, interpolation as f32);
     }
 
     unsafe fn move_leg(owner: &Spatial, mecha_leg: &MechaLeg<f32, StdMath, DefaultConsts>) {

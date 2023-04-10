@@ -1,6 +1,11 @@
 #![no_std]
 #![no_main]
 
+use communication::COMMS_ADDR;
+use mecha_ferris::analog::read_external_current;
+use mecha_ferris::comms::CommsManager;
+use state::RobotState;
+
 use core::iter::once;
 #[cfg(feature = "defmt")]
 use defmt::Format;
@@ -219,7 +224,15 @@ fn main() -> ! {
         clocks.peripheral_clock.freq(),
     );
 
-    let mut walking = Walking::<RomFuncs, DefaultConsts>::new(250.0, 170.0, 75.0);
+    let mut i2c_peripheral = hal::i2c::I2C::new_peripheral_event_iterator(
+        pac.I2C0,
+        pins.sda.into_mode(),
+        pins.scl.into_mode(),
+        &mut pac.RESETS,
+        COMMS_ADDR,
+    );
+
+    let mut walking = Walking::<RomFuncs, DefaultConsts>::new(75.0);
 
     let mut servo_cluster = match build_servo_cluster(
         &mut pio0,
@@ -267,11 +280,11 @@ fn main() -> ! {
 
     count_down.start(1.secs());
     let _ = nb::block!(count_down.wait());
+    let mut adc = hal::Adc::new(pac.ADC, &mut pac.RESETS);
     #[cfg(feature = "defmt")]
     {
         let sensor_delay = 1.millis();
 
-        let mut adc = hal::Adc::new(pac.ADC, &mut pac.RESETS);
         let mut analog_mux = AnalogMux::new(
             pins.adc_addr_0.into_mode(),
             pins.adc_addr_1.into_mode(),
@@ -290,43 +303,70 @@ fn main() -> ! {
         defmt::info!("servos pulling {}A", current);
     }
 
+    let mut external_voltage_sense = pins.adc0.into_floating_input();
+
     let mut time = 0.0;
     let mut step_delay = walking.duration() as f32;
+    let mut i2c_manager = CommsManager::new();
+    let mut robot_state = RobotState::new();
+    robot_state.body_translation.y = 170.0;
+    robot_state.leg_radius = 250.0;
 
     let mut now = timer.get_counter();
     loop {
+        i2c_manager.run_loop(&mut i2c_peripheral, &mut robot_state);
+
         let last_update = now;
         now = timer.get_counter();
         let diff = (now - last_update).to_millis();
         time += diff as f32 / 1000.0;
-        if time > step_delay {
-            let (_, delay) = walking.next_animation();
-            time %= step_delay;
-            step_delay = delay as f32 * 2.0;
-        }
-        let mut leg_visitor = LegVisitor {
-            servo_cluster: &mut servo_cluster,
-            servos: &servos,
-            position_start: Instant::from_ticks(0),
-            servo_start: Instant::from_ticks(0),
-            timer: &timer,
-            errors: [false; 6],
-        };
-        walking.walk(&mut leg_visitor, time / step_delay);
 
-        // Update led color based on whether any errors were encountered for that particular leg.
-        let _ = ws.write(brightness(
-            leg_visitor.errors.into_iter().map(|e| {
-                if e {
-                    RGB8 { r: 255, g: 0, b: 0 }
-                } else {
-                    RGB8 { r: 0, g: 255, b: 0 }
+        let update = match robot_state.state_machine {
+            state::StateMachine::Paused => false,
+            state::StateMachine::Homing => todo!(),
+            state::StateMachine::Calibrating => todo!(),
+            state::StateMachine::Looping => {
+                if time > step_delay {
+                    let (_, delay) = walking.next_animation();
+                    time %= step_delay;
+                    step_delay = delay as f32 * 2.0;
                 }
-            }),
-            LED_BRIGHTNESS,
-        ));
+                let mut leg_visitor = LegVisitor {
+                    servo_cluster: &mut servo_cluster,
+                    servos: &servos,
+                    position_start: Instant::from_ticks(0),
+                    servo_start: Instant::from_ticks(0),
+                    timer: &timer,
+                    errors: [false; 6],
+                };
+                walking.walk(&robot_state, &mut leg_visitor, time / step_delay);
 
-        servo_cluster.load();
+                // Update led color based on whether any errors were encountered for that particular leg.
+                let _ = ws.write(brightness(
+                    leg_visitor.errors.into_iter().map(|e| {
+                        if e {
+                            RGB8 { r: 255, g: 0, b: 0 }
+                        } else {
+                            RGB8 { r: 0, g: 255, b: 0 }
+                        }
+                    }),
+                    LED_BRIGHTNESS,
+                ));
+                true
+            }
+            state::StateMachine::Exploring => todo!(),
+        };
+
+        if update {
+            servo_cluster.load();
+        }
+
+        #[cfg(feature = "debug-current")]
+        {
+            let current = read_external_current(&mut adc, &mut external_voltage_sense);
+            defmt::info!("Current reading: {}", current);
+        }
+
         count_down.start((UPDATE_MS - diff).min(0).millis());
         let _ = nb::block!(count_down.wait());
     }
@@ -335,11 +375,11 @@ fn main() -> ! {
 struct LegVisitor<'a> {
     servo_cluster: &'a mut ServoCluster<NUM_SERVOS, PIO0, SM0, AngularCalibration>,
     servos: &'a [[ServoIdx; SERVOS_PER_LEG]; NUM_LEGS],
-    #[cfg_attr(not(feature = "defmt"), allow(dead_code))]
+    #[cfg_attr(not(feature = "debug-visitor"), allow(dead_code))]
     position_start: Instant,
-    #[cfg_attr(not(feature = "defmt"), allow(dead_code))]
+    #[cfg_attr(not(feature = "debug-visitor"), allow(dead_code))]
     servo_start: Instant,
-    #[cfg_attr(not(feature = "defmt"), allow(dead_code))]
+    #[cfg_attr(not(feature = "debug-visitor"), allow(dead_code))]
     timer: &'a Timer,
     errors: [bool; NUM_LEGS],
 }
@@ -347,12 +387,12 @@ struct LegVisitor<'a> {
 impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
     fn before(&mut self, _: Point3<f32>, _: &MechaLeg<f32, RomFuncs, DefaultConsts>) {}
 
-    #[cfg(feature = "defmt")]
+    #[cfg(feature = "debug-visitor")]
     fn on_error(&mut self, _: &MechaLeg<f32, RomFuncs, DefaultConsts>, e: LegError<f32>) {
         defmt::error!("Unable to reach target: {}", e);
     }
 
-    #[cfg(not(feature = "defmt"))]
+    #[cfg(not(feature = "debug-visitor"))]
     fn on_error(&mut self, _: &MechaLeg<f32, RomFuncs, DefaultConsts>, _: LegError<f32>) {}
 
     fn after(&mut self, _: Point3<f32>, leg: &MechaLeg<f32, RomFuncs, DefaultConsts>) {
@@ -379,12 +419,12 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
             .set_value(servo3, coxa_servo_angle, false);
     }
 
-    #[cfg(feature = "defmt")]
+    #[cfg(feature = "debug-visitor")]
     fn position_start(&mut self) {
         self.position_start = self.timer.get_counter();
     }
 
-    #[cfg(feature = "defmt")]
+    #[cfg(feature = "debug-visitor")]
     fn position_end(&mut self) {
         let now = self.timer.get_counter();
         defmt::info!(
@@ -393,12 +433,12 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
         )
     }
 
-    #[cfg(feature = "defmt")]
+    #[cfg(feature = "debug-visitor")]
     fn servo_start(&mut self) {
         self.servo_start = self.timer.get_counter();
     }
 
-    #[cfg(feature = "defmt")]
+    #[cfg(feature = "debug-visitor")]
     fn servo_end(&mut self) {
         let now = self.timer.get_counter();
         defmt::info!(
@@ -407,16 +447,16 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
         )
     }
 
-    #[cfg(not(feature = "defmt"))]
+    #[cfg(not(feature = "debug-visitor"))]
     fn position_start(&mut self) {}
 
-    #[cfg(not(feature = "defmt"))]
+    #[cfg(not(feature = "debug-visitor"))]
     fn position_end(&mut self) {}
 
-    #[cfg(not(feature = "defmt"))]
+    #[cfg(not(feature = "debug-visitor"))]
     fn servo_start(&mut self) {}
 
-    #[cfg(not(feature = "defmt"))]
+    #[cfg(not(feature = "debug-visitor"))]
     fn servo_end(&mut self) {}
 }
 

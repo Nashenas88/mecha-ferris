@@ -20,10 +20,14 @@ smart-leds = "0.3.0"
 ws2812-pio = "0.6.0"
 servo-pio = { version = "0.1.0" }
 kinematics = { path = "../kinematics" }
+communication = { path = "../communication" }
+state = { path = "../state" }
 
 [features]
 default = ["panic-halt"]
 defmt = ["dep:defmt", "defmt-rtt", "servo-pio/defmt", "kinematics/defmt", "panic-probe/print-defmt"]
+debug-visitor = ["defmt"]
+debug-current = ["defmt"]
 
 # cargo build/run
 [profile.dev]

@@ -1,4 +1,5 @@
-use nalgebra::{Matrix4, Point3, Rotation3, Scalar, Translation3, UnitQuaternion, Vector3 as Vec3};
+use nalgebra::{Matrix4, Point3, Rotation3, Scalar, Translation3, Vector3 as Vec3};
+use state::RobotState;
 
 use crate::animation::{Animation, AnimationManager};
 use crate::leg::LegError;
@@ -6,25 +7,22 @@ use crate::{ExpensiveMath, Leg, LegConsts};
 
 pub struct Walking<T, C> {
     animation_manager: AnimationManager,
-    walking_radius: f32,
-    body_rotation: UnitQuaternion<f32>,
     legs: [MechaLeg<f32, T, C>; 6],
-    body_height: f32,
     body_radius: f32,
 }
 
 impl<T, C> Walking<T, C> {
-    pub fn new(initial_walking_radius: f32, initial_body_height: f32, body_radius: f32) -> Self {
+    pub fn new(body_radius: f32) -> Self {
         let mut legs = [MechaLeg::default(); 6];
         for (i, leg) in legs.iter_mut().enumerate() {
             leg.idx = i as u8;
         }
         Self {
             animation_manager: AnimationManager::new(),
-            walking_radius: initial_walking_radius,
-            body_rotation: UnitQuaternion::default(),
+            // walking_radius: initial_walking_radius,
+            // body_rotation: UnitQuaternion::default(),
             legs,
-            body_height: initial_body_height,
+            // body_height: initial_body_height,
             body_radius,
         }
     }
@@ -41,16 +39,8 @@ impl<T, C> Walking<T, C> {
         self.animation_manager.next_animation()
     }
 
-    pub fn set_body_height(&mut self, height: f32) {
-        self.body_height = height;
-    }
-
     pub fn set_body_radius(&mut self, radius: f32) {
         self.body_radius = radius;
-    }
-
-    pub fn set_walking_radius(&mut self, radius: f32) {
-        self.walking_radius = radius;
     }
 }
 
@@ -59,17 +49,19 @@ where
     T: ExpensiveMath<f32>,
     C: LegConsts<f32>,
 {
-    pub fn home<V>(&mut self, visitor: &mut V, time: f32)
+    pub fn home<V>(&mut self, robot_state: &RobotState, visitor: &mut V, time: f32)
     where
         V: VisitLeg<f32, T, C>,
     {
-        let targets = self.animation_manager.home::<T>(self.walking_radius, time);
+        let targets = self
+            .animation_manager
+            .home::<T>(robot_state.leg_radius, time);
         for (leg, target) in self.legs.iter_mut().zip(targets.into_iter()) {
             visitor.before(target, leg);
 
             // Get target in each leg's coordinate space.
             let target = leg
-                .origin_to_coxa(self.body_height, self.body_radius)
+                .origin_to_coxa(robot_state.body_translation.y, self.body_radius)
                 .transform_point(&target);
 
             if let Err(e) = leg.leg.go_to(target) {
@@ -136,7 +128,7 @@ where
     T: ExpensiveMath<f32>,
     C: LegConsts<f32>,
 {
-    pub fn walk<V>(&mut self, leg_visitor: &mut V, time: f32)
+    pub fn walk<V>(&mut self, robot_state: &RobotState, leg_visitor: &mut V, time: f32)
     where
         V: VisitLeg<f32, T, C>,
     {
@@ -144,7 +136,7 @@ where
         // Get the targets for each foot.
         let targets = self
             .animation_manager
-            .targets::<T>(self.walking_radius, time);
+            .targets::<T>(robot_state.leg_radius, time);
         // leg_visitor.position_end();
 
         // if false {
@@ -175,7 +167,7 @@ where
 
             // Get target in each leg's coordinate space.
             let target = leg
-                .origin_to_coxa(self.body_height, self.body_radius)
+                .origin_to_coxa(robot_state.body_translation.y, self.body_radius)
                 .transform_point(&target);
 
             if let Err(e) = leg.leg.go_to(target) {
