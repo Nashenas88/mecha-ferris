@@ -39,10 +39,37 @@ impl Default for RobotState {
 }
 
 #[derive(Copy, Clone, Debug)]
+#[repr(u8)]
 pub enum StateMachine {
-    Paused,
-    Homing,
-    Calibrating,
-    Looping,
-    Exploring,
+    Paused = 1,
+    Homing = 2,
+    Calibrating = 3,
+    Looping = 4,
+    Exploring = 5,
+}
+
+impl TryFrom<u8> for StateMachine {
+    type Error = ();
+    fn try_from(val: u8) -> Result<Self, Self::Error> {
+        Ok(match val {
+            1 => Self::Paused,
+            2 => Self::Homing,
+            3 => Self::Calibrating,
+            4 => Self::Looping,
+            5 => Self::Exploring,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl Into<u8> for StateMachine {
+    fn into(self) -> u8 {
+        match self {
+            StateMachine::Paused => 1,
+            StateMachine::Homing => 2,
+            StateMachine::Calibrating => 3,
+            StateMachine::Looping => 4,
+            StateMachine::Exploring => 5,
+        }
+    }
 }
