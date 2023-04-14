@@ -1,0 +1,50 @@
+[package]
+name = "nrf-comms"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+defmt = "0.3.2"
+defmt-rtt = "0.4.0"
+panic-probe = { version = "0.3.0", features=["print-defmt"] }
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.3"
+futures = { version = "0.3.27", default-features = false }
+byte-strings-proc_macros = "0.2.2"
+critical-section = "1.1.1"
+state = { path = "../state" }
+communication = { path = "../communication" }
+nalgebra = { version = "0.32.2", default-features = false }
+scapegoat = "2.3.0"
+static_cell = "1.0.0"
+
+[dependencies.embassy-executor]
+git = "https://github.com/embassy-rs/embassy.git"
+rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
+features = ["defmt", "nightly", "integrated-timers"]
+
+[dependencies.embassy-sync]
+git = "https://github.com/embassy-rs/embassy.git"
+rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
+features = ["defmt", "nightly"]
+
+[dependencies.embassy-time]
+git = "https://github.com/embassy-rs/embassy.git"
+rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
+features = ["defmt", "nightly", "defmt-timestamp-uptime"]
+
+[dependencies.embassy-nrf]
+git = "https://github.com/embassy-rs/embassy.git"
+rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
+features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "nightly"]
+
+[dependencies.nrf-softdevice]
+git = "https://github.com/embassy-rs/nrf-softdevice.git"
+rev = "a661d3713ac74cf94bc597ffc0fb4d55b099f915"
+features = ["nightly", "defmt", "nrf52840", "s140", "ble-peripheral", "ble-central", "critical-section-impl", "ble-gatt-server"]
+
+[dependencies.nrf-softdevice-s140]
+git = "https://github.com/embassy-rs/nrf-softdevice.git"
+rev = "a661d3713ac74cf94bc597ffc0fb4d55b099f915"
