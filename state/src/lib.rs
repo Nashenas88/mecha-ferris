@@ -38,7 +38,7 @@ impl Default for RobotState {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, defmt::Format)]
 #[repr(u8)]
 pub enum StateMachine {
     Paused = 1,
@@ -48,8 +48,13 @@ pub enum StateMachine {
     Exploring = 5,
 }
 
+#[derive(defmt::Format)]
+pub enum SMConversionErr {
+    BadValue(u8),
+}
+
 impl TryFrom<u8> for StateMachine {
-    type Error = ();
+    type Error = SMConversionErr;
     fn try_from(val: u8) -> Result<Self, Self::Error> {
         Ok(match val {
             1 => Self::Paused,
@@ -57,7 +62,7 @@ impl TryFrom<u8> for StateMachine {
             3 => Self::Calibrating,
             4 => Self::Looping,
             5 => Self::Exploring,
-            _ => return Err(()),
+            _ => return Err(SMConversionErr::BadValue(val)),
         })
     }
 }
