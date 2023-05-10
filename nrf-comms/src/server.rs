@@ -11,6 +11,7 @@ use nrf_softdevice::Softdevice;
 use state::StateMachine;
 
 use crate::command::{handle_command, CommandUpdate, StateManager, UpdateKind};
+use crate::log;
 use crate::services::{update, UpdateError};
 use crate::wrappers::{Translation, UQuaternion, Vector, SM};
 use crate::{
@@ -78,10 +79,11 @@ impl Server {
         gatt_server::run(conn.borrow().as_ref().unwrap(), &self.0, |e| match e {
             ServerInnerEvent::Bas(e) => match e {
                 BatteryServiceEvent::BatteryLevelCccdWrite { notifications } => {
-                    defmt::info!("battery notifications: {}", notifications);
+                    log::info!("battery notifications: {}", notifications);
                 }
             },
             ServerInnerEvent::Controller(e) => {
+                log::info!("Processing command");
                 let command = match e {
                     ControllerServiceEvent::SyncWrite(sync) if sync => Some(Command::Sync),
                     ControllerServiceEvent::SyncWrite(_) => None,
@@ -92,6 +94,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("state notifications: {}", notifications);
                         command_update.borrow_mut().state =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -101,6 +104,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("speed notifications: {}", notifications);
                         command_update.borrow_mut().speed =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -112,6 +116,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("angular velocity notifications: {}", notifications);
                         command_update.borrow_mut().angular_velocity =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -123,6 +128,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("motion vector notifications: {}", notifications);
                         command_update.borrow_mut().motion_vector =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -134,6 +140,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("body translation notifications: {}", notifications);
                         command_update.borrow_mut().body_translation =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -145,6 +152,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("body rotation notifications: {}", notifications);
                         command_update.borrow_mut().body_rotation =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -156,6 +164,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("leg radius notifications: {}", notifications);
                         command_update.borrow_mut().leg_radius =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -167,6 +176,7 @@ impl Server {
                         indications,
                         notifications,
                     } => {
+                        log::info!("battery interval notifications: {}", notifications);
                         command_update.borrow_mut().battery_interval =
                             UpdateKind::from_cccd(notifications, indications);
                         None
@@ -183,7 +193,7 @@ impl Server {
                         command_update,
                     );
                     if let Err(e) = spawner.spawn(command_task_token) {
-                        defmt::error!("Failed to spawn command task: {:?}", e);
+                        log::error!("Failed to spawn command task: {:?}", e);
                     }
                 }
             }
@@ -204,7 +214,7 @@ async fn command_task(
     command: Command,
     command_update: &'static RefCell<CommandUpdate>,
 ) {
-    defmt::info!("Executing command: {}", command);
+    log::info!("Executing command: {}", command);
     let mut robot_state = ROBOT_STATE.lock().await;
     let res = handle_command(
         &mut robot_state,
@@ -214,7 +224,7 @@ async fn command_task(
     )
     .await;
     if let Err(e) = res {
-        defmt::error!("Failed to process command {}: {}", command, e);
+        log::error!("Failed to process command {}: {}", command, e);
     }
     let robot_state = &*robot_state;
     if let Ok(conn) = conn.try_borrow() {
@@ -222,7 +232,7 @@ async fn command_task(
             let res: Result<(), UpdateError> =
                 update(server, conn, &command_update.borrow(), command, robot_state);
             if let Err(e) = res {
-                defmt::info!("send notification error: {:?}", e);
+                log::info!("send notification error: {:?}", e);
             }
         }
     }

@@ -1,3 +1,4 @@
+use crate::log;
 use communication::{Deserialize, I2cRequestField, I2cRequestOp, Serialize};
 use core::task::Poll;
 use pimoroni_servo2040::hal::i2c::peripheral::{I2CEvent, I2CPeripheralEventIterator};
@@ -9,13 +10,14 @@ use state::RobotState;
 type I2C = I2CPeripheralEventIterator<I2C0, (Gp20I2C0Sda, Gp21I2C0Scl)>;
 
 macro_rules! on_ready {
-    ($call:expr, $assign:expr) => {
+    ($call:expr, $assign:expr, $block:block) => {
         if let Poll::Ready(res) = $call {
             match res {
-                Ok(v) => $assign = v,
-                Err(e) => {
-                    defmt::warn!("Unable to deserialize data: {:?}", e);
-                }
+                Ok(v) => {
+                    $block
+                    $assign = v
+                },
+                Err(e) => log::warn!("Unable to deserialize data: {:?}", e),
             }
         }
     };
@@ -58,64 +60,111 @@ impl CommsManager {
     {
         self.read += i2c.read(&mut self.buf[self.read..]);
         if self.read == self.buf.len() {
-            Poll::Ready(<T as Deserialize>::deserialize(&mut self.buf))
+            Poll::Ready(<T as Deserialize>::deserialize(&mut self.buf[1..]))
         } else {
             Poll::Pending
         }
     }
 
-    pub fn run_loop(&mut self, i2c: &mut I2C, state: &mut RobotState) {
+    pub fn process_read_op(&mut self, i2c: &mut I2C, state: &RobotState, op: I2cRequestOp) {
+        match op {
+            I2cRequestOp::Get(field) => match field {
+                I2cRequestField::Speed => self.write(i2c, state.speed),
+                I2cRequestField::AngularVelocity => self.write(i2c, state.angular_velocity),
+                I2cRequestField::MoveVector => self.write(i2c, state.motion_vector),
+                I2cRequestField::BodyTranslation => self.write(i2c, state.body_translation),
+                I2cRequestField::BodyRotation => self.write(i2c, state.body_rotation),
+                I2cRequestField::LegRadius => self.write(i2c, state.leg_radius),
+            },
+            I2cRequestOp::GetBatteryLevel => self.write(i2c, state.battery_level),
+            _ => log::warn!("unexpected op on read request {}", op),
+        }
+    }
+
+    pub fn process_write_op(&mut self, i2c: &mut I2C, state: &mut RobotState) -> bool {
+        self.read = i2c.read(&mut self.buf);
+        match <I2cRequestOp as Deserialize>::deserialize(&self.buf[..self.read]) {
+            Ok(op) => {
+                self.i2c_req = Some(op);
+                if self.read > 1 {
+                    return self.process_write(i2c, state, op);
+                }
+            }
+            Err(e) => log::warn!("Unable to deserialize data: {:?}", e),
+        }
+        false
+    }
+
+    pub fn process_write(
+        &mut self,
+        i2c: &mut I2C,
+        state: &mut RobotState,
+        op: I2cRequestOp,
+    ) -> bool {
+        let mut updated = false;
+        match op {
+            I2cRequestOp::ChangeState => {
+                on_ready!(self.read(i2c), state.state_machine, {
+                    updated = true;
+                })
+            }
+            I2cRequestOp::Set(field) => match field {
+                I2cRequestField::Speed => {
+                    on_ready!(self.read(i2c), state.speed, {
+                        updated = true;
+                    })
+                }
+                I2cRequestField::AngularVelocity => {
+                    on_ready!(self.read(i2c), state.angular_velocity, {
+                        updated = true;
+                    })
+                }
+                I2cRequestField::MoveVector => {
+                    on_ready!(self.read(i2c), state.motion_vector, {
+                        updated = true;
+                    })
+                }
+                I2cRequestField::BodyTranslation => {
+                    on_ready!(self.read(i2c), state.body_translation, {
+                        updated = true;
+                    })
+                }
+                I2cRequestField::BodyRotation => {
+                    on_ready!(self.read(i2c), state.body_rotation, {
+                        updated = true;
+                    })
+                }
+                I2cRequestField::LegRadius => {
+                    on_ready!(self.read(i2c), state.leg_radius, {
+                        updated = true;
+                    })
+                }
+            },
+            I2cRequestOp::SetBatteryUpdateInterval => {
+                on_ready!(self.read(i2c), state.battery_update_interval_ms, {
+                    updated = true;
+                })
+            }
+            _ => log::warn!("unexpected op on write request {}", op),
+        }
+        updated
+    }
+
+    pub fn run_loop(&mut self, i2c: &mut I2C, state: &mut RobotState) -> bool {
+        let mut updated = false;
         while let Some(event) = i2c.next() {
             match event {
                 I2CEvent::Start | I2CEvent::Restart => {}
-                I2CEvent::TransferRead => match &self.i2c_req {
-                    Some(I2cRequestOp::Get(field)) => match field {
-                        I2cRequestField::Speed => self.write(i2c, state.speed),
-                        I2cRequestField::AngularVelocity => self.write(i2c, state.angular_velocity),
-                        I2cRequestField::MoveVector => self.write(i2c, state.motion_vector),
-                        I2cRequestField::BodyTranslation => self.write(i2c, state.body_translation),
-                        I2cRequestField::BodyRotation => self.write(i2c, state.body_rotation),
-                        I2cRequestField::LegRadius => self.write(i2c, state.leg_radius),
-                    },
-                    Some(I2cRequestOp::GetBatteryLevel) => self.write(i2c, state.battery_level),
-                    _ => {}
+                I2CEvent::TransferRead => match self.i2c_req {
+                    Some(op) => self.process_read_op(i2c, state, op),
+                    None => log::warn!("missing request on read"),
                 },
-                I2CEvent::TransferWrite => match &self.i2c_req {
-                    Some(I2cRequestOp::ChangeState) => {
-                        on_ready!(self.read(i2c), state.state_machine)
+                I2CEvent::TransferWrite => {
+                    updated |= match self.i2c_req {
+                        Some(op) => self.process_write(i2c, state, op),
+                        None => self.process_write_op(i2c, state),
                     }
-                    Some(I2cRequestOp::Set(field)) => match field {
-                        I2cRequestField::Speed => {
-                            on_ready!(self.read(i2c), state.speed)
-                        }
-                        I2cRequestField::AngularVelocity => {
-                            on_ready!(self.read(i2c), state.angular_velocity)
-                        }
-                        I2cRequestField::MoveVector => {
-                            on_ready!(self.read(i2c), state.motion_vector)
-                        }
-                        I2cRequestField::BodyTranslation => {
-                            on_ready!(self.read(i2c), state.body_translation)
-                        }
-                        I2cRequestField::BodyRotation => {
-                            on_ready!(self.read(i2c), state.body_rotation)
-                        }
-                        I2cRequestField::LegRadius => {
-                            on_ready!(self.read(i2c), state.leg_radius)
-                        }
-                    },
-                    Some(I2cRequestOp::SetBatteryUpdateInterval) => {
-                        on_ready!(self.read(i2c), state.battery_update_interval_ms)
-                    }
-                    None => {
-                        let read = i2c.read(&mut self.buf);
-                        match <I2cRequestOp as Deserialize>::deserialize(&self.buf[..read]) {
-                            Ok(op) => self.i2c_req = Some(op),
-                            Err(e) => defmt::warn!("Unable to deserialize data: {:?}", e),
-                        }
-                    }
-                    _ => {}
-                },
+                }
                 I2CEvent::Stop => {
                     self.i2c_req = None;
                     self.written = 0;
@@ -124,5 +173,6 @@ impl CommsManager {
                 }
             }
         }
+        updated
     }
 }

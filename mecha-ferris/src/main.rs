@@ -4,6 +4,7 @@
 use communication::COMMS_ADDR;
 use mecha_ferris::analog::read_external_current;
 use mecha_ferris::comms::CommsManager;
+use mecha_ferris::log;
 use state::RobotState;
 
 use core::iter::once;
@@ -246,10 +247,7 @@ fn main() -> ! {
     ) {
         Ok(cluster) => cluster,
         Err(e) => {
-            #[cfg(feature = "defmt")]
-            {
-                defmt::error!("Failed to build servo cluster: {:?}", e);
-            }
+            log::error!("Failed to build servo cluster: {:?}", e);
             let _ = ws.write(brightness(
                 once(RGB8 { r: 255, g: 0, b: 0 }),
                 LED_BRIGHTNESS,
@@ -300,7 +298,7 @@ fn main() -> ! {
             let _ = nb::block!(count_down.wait());
         }
         current /= SAMPLES as f32;
-        defmt::info!("servos pulling {}A", current);
+        log::info!("servos pulling {}A", current);
     }
 
     let mut external_voltage_sense = pins.adc0.into_floating_input();
@@ -312,9 +310,16 @@ fn main() -> ! {
     robot_state.body_translation.y = 170.0;
     robot_state.leg_radius = 250.0;
 
+    let _ = ws.write(brightness(
+        [black(), black(), black(), black(), black(), white()].into_iter(),
+        LED_BRIGHTNESS,
+    ));
+
     let mut now = timer.get_counter();
     loop {
-        i2c_manager.run_loop(&mut i2c_peripheral, &mut robot_state);
+        if i2c_manager.run_loop(&mut i2c_peripheral, &mut robot_state) {
+            log::info!("Received new state?: {:?}", robot_state.state_machine);
+        }
 
         let last_update = now;
         now = timer.get_counter();
@@ -322,10 +327,19 @@ fn main() -> ! {
         time += diff as f32 / 1000.0;
 
         let update = match robot_state.state_machine {
-            state::StateMachine::Paused => false,
-            state::StateMachine::Homing => todo!(),
-            state::StateMachine::Calibrating => todo!(),
-            state::StateMachine::Looping => {
+            state::StateMachine::Paused => {
+                let _ = ws.write(brightness([cyan(); 6].into_iter(), LED_BRIGHTNESS));
+                false
+            }
+            state::StateMachine::Homing => {
+                let _ = ws.write(brightness([yellow(); 6].into_iter(), LED_BRIGHTNESS));
+                false
+            }
+            state::StateMachine::Calibrating => {
+                let _ = ws.write(brightness([blue(); 6].into_iter(), LED_BRIGHTNESS));
+                false
+            }
+            state::StateMachine::Looping | state::StateMachine::Exploring => {
                 if time > step_delay {
                     let (_, delay) = walking.next_animation();
                     time %= step_delay;
@@ -343,18 +357,14 @@ fn main() -> ! {
 
                 // Update led color based on whether any errors were encountered for that particular leg.
                 let _ = ws.write(brightness(
-                    leg_visitor.errors.into_iter().map(|e| {
-                        if e {
-                            RGB8 { r: 255, g: 0, b: 0 }
-                        } else {
-                            RGB8 { r: 0, g: 255, b: 0 }
-                        }
-                    }),
+                    leg_visitor
+                        .errors
+                        .into_iter()
+                        .map(|e| if e { red() } else { green() }),
                     LED_BRIGHTNESS,
                 ));
                 true
             }
-            state::StateMachine::Exploring => todo!(),
         };
 
         if update {
@@ -364,11 +374,59 @@ fn main() -> ! {
         #[cfg(feature = "debug-current")]
         {
             let current = read_external_current(&mut adc, &mut external_voltage_sense);
-            defmt::info!("Current reading: {}", current);
+            log::info!("Current reading: {}", current);
         }
 
         count_down.start((UPDATE_MS - diff).min(0).millis());
         let _ = nb::block!(count_down.wait());
+    }
+}
+
+fn red() -> RGB8 {
+    RGB8 { r: 255, g: 0, b: 0 }
+}
+
+fn green() -> RGB8 {
+    RGB8 { r: 0, g: 255, b: 0 }
+}
+
+fn blue() -> RGB8 {
+    RGB8 { r: 0, g: 0, b: 255 }
+}
+
+fn yellow() -> RGB8 {
+    RGB8 {
+        r: 255,
+        g: 255,
+        b: 0,
+    }
+}
+
+fn purple() -> RGB8 {
+    RGB8 {
+        r: 255,
+        g: 0,
+        b: 255,
+    }
+}
+
+fn black() -> RGB8 {
+    RGB8 { r: 0, g: 0, b: 0 }
+}
+
+fn cyan() -> RGB8 {
+    RGB8 {
+        r: 0,
+        g: 255,
+        b: 255,
+    }
+}
+
+fn white() -> RGB8 {
+    RGB8 {
+        r: 255,
+        g: 255,
+        b: 255,
     }
 }
 
@@ -389,7 +447,7 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
 
     #[cfg(feature = "debug-visitor")]
     fn on_error(&mut self, _: &MechaLeg<f32, RomFuncs, DefaultConsts>, e: LegError<f32>) {
-        defmt::error!("Unable to reach target: {}", e);
+        log::error!("Unable to reach target: {}", e);
     }
 
     #[cfg(not(feature = "debug-visitor"))]
@@ -403,7 +461,7 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
         // I wonder if removing this causes the LED's to be written to too quickly, or
         // if it's a problem with updating the servo data too quickly (maybe bug in DMA
         // mapping).
-        // defmt::info!(
+        // log::info!(
         //     "Moving to ({}, {}, {})",
         //     coxa_servo_angle,
         //     femur_servo_angle,
@@ -427,7 +485,7 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
     #[cfg(feature = "debug-visitor")]
     fn position_end(&mut self) {
         let now = self.timer.get_counter();
-        defmt::info!(
+        log::info!(
             "Calculating position took {}us",
             (now - self.position_start).to_micros() as f32
         )
@@ -441,7 +499,7 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
     #[cfg(feature = "debug-visitor")]
     fn servo_end(&mut self) {
         let now = self.timer.get_counter();
-        defmt::info!(
+        log::info!(
             "Calculating and moving legs took {}us",
             (now - self.servo_start).to_micros() as f32,
         )

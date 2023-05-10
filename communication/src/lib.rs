@@ -25,7 +25,7 @@ pub enum I2cRequest {
     GetBatteryLevel,
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, defmt::Format)]
 pub enum I2cRequestOp {
     ChangeState,
     Get(I2cRequestField),
@@ -41,7 +41,7 @@ impl Default for I2cRequestOp {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, defmt::Format)]
 pub enum I2cRequestField {
     Speed,
     AngularVelocity,

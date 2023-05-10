@@ -30,6 +30,7 @@ use crate::services::{
 
 mod command;
 mod consts;
+mod log;
 mod server;
 mod services;
 mod wrappers;
@@ -50,7 +51,7 @@ async fn robot_comm(
         let written = i2c_message.serialize(&mut buffer);
         buffer[written..].fill(0);
         if let Err(e) = i2c.write(COMMS_ADDR as u8, &buffer).await {
-            defmt::error!("Unable to write message to MCU: {:?}", e);
+            log::error!("Unable to write message to MCU: {:?}", e);
         }
     }
 }
@@ -140,11 +141,11 @@ async fn main(spawner: Spawner) {
         let irq = unsafe { interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0::steal() };
         irq.set_priority(interrupt::Priority::P3);
     }
-    let i2c = Twim::new(p.TWISPI0, Irqs, p.P0_16, p.P0_24, config);
+    let i2c = Twim::new(p.TWISPI0, Irqs, p.P0_16, p.P0_14, config);
 
     let robot_comms_token = robot_comm(i2c, channel.receiver());
     if let Err(e) = spawner.spawn(robot_comms_token) {
-        defmt::error!("Failed to spawn robot comms task: {:?}", e);
+        log::error!("Failed to spawn robot comms task: {:?}", e);
     }
 
     loop {
@@ -161,7 +162,7 @@ async fn main(spawner: Spawner) {
             }
         }
 
-        defmt::info!("advertising done!");
+        log::info!("advertising done!");
 
         // Run the GATT server on the connection. This returns when the connection gets disconnected.
         //
@@ -179,7 +180,7 @@ async fn main(spawner: Spawner) {
         }
 
         if let Err(e) = res {
-            defmt::error!("gatt_server run exited with error: {:?}", e);
+            log::error!("gatt_server run exited with error: {:?}", e);
         }
     }
 }

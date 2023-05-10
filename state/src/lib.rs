@@ -48,7 +48,7 @@ pub enum StateMachine {
     Exploring = 5,
 }
 
-#[derive(defmt::Format)]
+#[derive(Copy, Clone, defmt::Format, Debug)]
 pub enum SMConversionErr {
     BadValue(u8),
 }

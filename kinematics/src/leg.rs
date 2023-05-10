@@ -1,5 +1,4 @@
 use core::marker::PhantomData;
-use core::ops::{Add, Mul, Neg, Sub};
 
 use nalgebra::{Matrix4, Point3, RealField, Rotation3, Translation3, Vector3};
 use num_traits::FloatConst;
@@ -119,27 +118,101 @@ impl Two for f32 {
     const TWO: f32 = 2.0;
 }
 
+#[const_trait]
+pub trait MyMul {
+    type Output;
+    fn mul(self, rhs: Self) -> Self::Output;
+}
+impl const MyMul for f32 {
+    type Output = f32;
+    fn mul(self, rhs: Self) -> Self::Output {
+        self * rhs
+    }
+}
+#[const_trait]
+pub trait MyAdd {
+    type Output;
+    fn add(self, rhs: Self) -> Self::Output;
+}
+
+impl const MyAdd for f32 {
+    type Output = f32;
+    fn add(self, rhs: Self) -> Self::Output {
+        self + rhs
+    }
+}
+
+#[const_trait]
+pub trait MySub {
+    type Output;
+    fn sub(self, rhs: Self) -> Self::Output;
+}
+
+impl const MySub for f32 {
+    type Output = f32;
+    fn sub(self, rhs: Self) -> Self::Output {
+        self - rhs
+    }
+}
+
+#[const_trait]
+pub trait MyNeg {
+    type Output;
+    fn neg(self) -> Self::Output;
+}
+
+impl const MyNeg for f32 {
+    type Output = f32;
+    fn neg(self) -> Self::Output {
+        -self
+    }
+}
+
 impl<F, T, C> Leg<F, T, C>
 where
     F: Copy
         + RealField
-        + ~const Mul<Output = F>
-        + ~const Add<Output = F>
-        + ~const Sub<Output = F>
-        + ~const Neg<Output = F>
+        + ~const MyMul<Output = F>
+        + ~const MyAdd<Output = F>
+        + ~const MySub<Output = F>
+        + ~const MyNeg<Output = F>
         + Two
         + FloatConst,
     T: ExpensiveMath<F>,
     C: LegConsts<F>,
 {
-    const FL2: F = <C as LegConsts<F>>::FEMUR_LENGTH * <C as LegConsts<F>>::FEMUR_LENGTH;
-    const TL2: F = <C as LegConsts<F>>::TIBIA_LENGTH * <C as LegConsts<F>>::TIBIA_LENGTH;
-    const TF2: F =
-        <F as Two>::TWO * <C as LegConsts<F>>::FEMUR_LENGTH * <C as LegConsts<F>>::TIBIA_LENGTH;
-    const MAX_LEG_LEN2: F = (<C as LegConsts<F>>::FEMUR_LENGTH + <C as LegConsts<F>>::TIBIA_LENGTH)
-        * (<C as LegConsts<F>>::FEMUR_LENGTH + <C as LegConsts<F>>::TIBIA_LENGTH);
-    const MIN_LEG_LEN2: F = (<C as LegConsts<F>>::TIBIA_LENGTH - <C as LegConsts<F>>::FEMUR_LENGTH)
-        * (<C as LegConsts<F>>::TIBIA_LENGTH - <C as LegConsts<F>>::FEMUR_LENGTH);
+    const FL2: F = MyMul::mul(
+        <C as LegConsts<F>>::FEMUR_LENGTH,
+        <C as LegConsts<F>>::FEMUR_LENGTH,
+    );
+    const TL2: F = MyMul::mul(
+        <C as LegConsts<F>>::TIBIA_LENGTH,
+        <C as LegConsts<F>>::TIBIA_LENGTH,
+    );
+    const TF2: F = MyMul::mul(
+        MyMul::mul(<F as Two>::TWO, <C as LegConsts<F>>::FEMUR_LENGTH),
+        <C as LegConsts<F>>::TIBIA_LENGTH,
+    );
+    const MAX_LEG_LEN2: F = MyMul::mul(
+        MyAdd::add(
+            <C as LegConsts<F>>::FEMUR_LENGTH,
+            <C as LegConsts<F>>::TIBIA_LENGTH,
+        ),
+        MyAdd::add(
+            <C as LegConsts<F>>::FEMUR_LENGTH,
+            <C as LegConsts<F>>::TIBIA_LENGTH,
+        ),
+    );
+    const MIN_LEG_LEN2: F = MyMul::mul(
+        MySub::sub(
+            <C as LegConsts<F>>::TIBIA_LENGTH,
+            <C as LegConsts<F>>::FEMUR_LENGTH,
+        ),
+        MySub::sub(
+            <C as LegConsts<F>>::TIBIA_LENGTH,
+            <C as LegConsts<F>>::FEMUR_LENGTH,
+        ),
+    );
 
     pub fn go_to(&mut self, target: Point3<F>) -> Result<(), LegError<F>> {
         let coxa_angle = T::atan2(target.x, target.z);
@@ -178,14 +251,19 @@ where
         Rotation3::from_axis_angle(&Vector3::y_axis(), coxa_angle).to_homogeneous()
             * Translation3::new(F::zero(), F::zero(), <C as LegConsts<F>>::COXA_LENGTH)
                 .to_homogeneous()
-            * Rotation3::from_axis_angle(&Vector3::z_axis(), -F::FRAC_PI_2()).to_homogeneous()
+            * Rotation3::from_axis_angle(&Vector3::z_axis(), MyNeg::neg(F::FRAC_PI_2()))
+                .to_homogeneous()
     }
 
     /// Returns a matrix that transforms a point in coxa space to one in femur space
     pub fn coxa_to_femur(coxa_angle: F) -> Matrix4<F> {
         Rotation3::from_axis_angle(&Vector3::z_axis(), F::FRAC_PI_2()).to_homogeneous()
-            * Translation3::new(F::zero(), F::zero(), -<C as LegConsts<F>>::COXA_LENGTH)
-                .to_homogeneous()
+            * Translation3::new(
+                F::zero(),
+                F::zero(),
+                MyNeg::neg(<C as LegConsts<F>>::COXA_LENGTH),
+            )
+            .to_homogeneous()
             * Rotation3::from_axis_angle(&Vector3::y_axis(), -coxa_angle).to_homogeneous()
     }
 

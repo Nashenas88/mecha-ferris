@@ -1,3 +1,4 @@
+use crate::log;
 use nalgebra::{Quaternion, Translation3, UnitQuaternion, Vector3};
 use nrf_softdevice::ble::FixedGattValue;
 use state::StateMachine;
@@ -67,17 +68,16 @@ impl FixedGattValue for UQuaternion {
     }
 }
 
-#[derive(defmt::Format)]
+#[derive(Copy, Clone, defmt::Format)]
 pub(crate) struct SM(pub(crate) StateMachine);
 
 impl FixedGattValue for SM {
     const SIZE: usize = 1;
 
     fn from_gatt(data: &[u8]) -> Self {
-        defmt::info!("{}", data);
         let sm = match u8::from_gatt(data).try_into() {
             Ok(sm) => sm,
-            Err(e) => defmt::panic!("bad data for StateMachine: {}", e),
+            Err(e) => log::panic!("bad data for StateMachine: {:?}", e),
         };
         SM(sm)
     }
