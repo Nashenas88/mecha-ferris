@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">MechaFerris</string>
+    <string name="title_activity_main2">MainActivity2</string>
+    <string name="title_home">Home</string>
+    <string name="title_dashboard">Dashboard</string>
+    <string name="title_notifications">Notifications</string>
+    <string name="connect_message">Connect to Mecha-Ferris?</string>
+    <string name="connect">Connect</string>
+    <string name="connected_message">Connected to Mecha-Ferris</string>
+    <string name="battery_level_label">Battery Level</string>
+    <string name="state_machine_label">State</string>
+    <string name="battery_percent">%1$3d%%</string>
+    <string name="device_name_label">Device Name</string>
+    <string name="device_addr_label">Device Address</string>
+    <string name="title_activity_connected">Connected</string>
+</resources>
