@@ -10,10 +10,10 @@ use nrf_softdevice::ble::{gatt_server, Connection};
 use nrf_softdevice::Softdevice;
 use state::StateMachine;
 
-use crate::command::{handle_command, CommandUpdate, StateManager, UpdateKind};
+use crate::command::{handle_command, CommandUpdate, StateManager, SyncKind, UpdateKind};
 use crate::log;
 use crate::services::{update, UpdateError};
-use crate::wrappers::{Translation, UQuaternion, Vector, SM};
+use crate::wrappers::{Translation, UQuaternion, Vector, F32, SM};
 use crate::{
     BatteryService, BatteryServiceEvent, Command, ControllerService, ControllerServiceEvent,
     ROBOT_STATE,
@@ -36,8 +36,8 @@ impl Server {
             .controller
             .state_set(&SM(StateMachine::Paused))
             .unwrap();
-        server.controller.speed_set(&0.0).unwrap();
-        server.controller.angular_velocity_set(&0.0).unwrap();
+        server.controller.animation_factor_set(&F32(1.0)).unwrap();
+        server.controller.angular_velocity_set(&F32(0.0)).unwrap();
         server
             .controller
             .motion_vector_set(&Vector(Vector3::new(0.0, 0.0, 0.0)))
@@ -52,7 +52,7 @@ impl Server {
                 0.0, 0.0, 0.0,
             )))
             .unwrap();
-        server.controller.leg_radius_set(&0.0).unwrap();
+        server.controller.leg_radius_set(&F32(0.0)).unwrap();
         server
             .controller
             .battery_update_interval_ms_set(&0)
@@ -85,8 +85,11 @@ impl Server {
             ServerInnerEvent::Controller(e) => {
                 log::info!("Processing command");
                 let command = match e {
-                    ControllerServiceEvent::SyncWrite(sync) if sync => Some(Command::Sync),
-                    ControllerServiceEvent::SyncWrite(_) => None,
+                    ControllerServiceEvent::SyncWrite(sync) => Some(Command::Sync(if sync {
+                        SyncKind::AllState
+                    } else {
+                        SyncKind::OnlyCommands
+                    })),
                     ControllerServiceEvent::StateWrite(SM(state_machine)) => {
                         Some(Command::ChangeState(state_machine))
                     }
@@ -99,18 +102,20 @@ impl Server {
                             UpdateKind::from_cccd(notifications, indications);
                         None
                     }
-                    ControllerServiceEvent::SpeedWrite(speed) => Some(Command::SetSpeed(speed)),
-                    ControllerServiceEvent::SpeedCccdWrite {
+                    ControllerServiceEvent::AnimationFactorWrite(animation_factor) => {
+                        Some(Command::SetAnimationFactor(animation_factor.0))
+                    }
+                    ControllerServiceEvent::AnimationFactorCccdWrite {
                         indications,
                         notifications,
                     } => {
-                        log::info!("speed notifications: {}", notifications);
-                        command_update.borrow_mut().speed =
+                        log::info!("animation_factor notifications: {}", notifications);
+                        command_update.borrow_mut().animation_factor =
                             UpdateKind::from_cccd(notifications, indications);
                         None
                     }
                     ControllerServiceEvent::AngularVelocityWrite(angular_velocity) => {
-                        Some(Command::SetAngularVelocity(angular_velocity))
+                        Some(Command::SetAngularVelocity(angular_velocity.0))
                     }
                     ControllerServiceEvent::AngularVelocityCccdWrite {
                         indications,
@@ -158,7 +163,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::LegRadiusWrite(leg_radius) => {
-                        Some(Command::SetLegRadius(leg_radius))
+                        Some(Command::SetLegRadius(leg_radius.0))
                     }
                     ControllerServiceEvent::LegRadiusCccdWrite {
                         indications,

@@ -25,9 +25,12 @@ state = { path = "../state" }
 
 [features]
 default = ["panic-halt"]
-defmt = ["dep:defmt", "defmt-rtt", "servo-pio/defmt", "kinematics/defmt", "panic-probe/print-defmt"]
+defmt = ["dep:defmt", "defmt-rtt", "servo-pio/defmt", "communication/defmt", "kinematics/defmt", "panic-probe/print-defmt"]
 debug-visitor = ["defmt"]
 debug-current = ["defmt"]
+
+[patch.crates-io]
+servo-pio = { path = "../../servo-pio" }
 
 # cargo build/run
 [profile.dev]

@@ -1,5 +1,5 @@
 #[cfg(feature = "defmt")]
-pub use defmt::{error, info, panic, trace, warn};
+pub use defmt::{error, info, panic, trace, unwrap, warn};
 
 #[cfg(not(feature = "defmt"))]
 #[macro_export]
@@ -32,4 +32,12 @@ macro_rules! warn_ {
 }
 
 #[cfg(not(feature = "defmt"))]
-pub use {error, info, panic_ as panic, trace, warn_ as warn};
+#[macro_export]
+macro_rules! unwrap_ {
+    ($arg:expr) => {
+        $arg.unwrap()
+    };
+}
+
+#[cfg(not(feature = "defmt"))]
+pub use {error, info, panic_ as panic, trace, unwrap_ as unwrap, warn_ as warn};

@@ -2,9 +2,13 @@
 #![no_main]
 
 use communication::COMMS_ADDR;
+use data::{calibrating_calibrations, make_joints};
+use homing::Homing;
 use mecha_ferris::analog::read_external_current;
 use mecha_ferris::comms::CommsManager;
-use mecha_ferris::log;
+use mecha_ferris::debouncer::Debouncer;
+use mecha_ferris::joint::Joint;
+use mecha_ferris::{log, State};
 use state::RobotState;
 
 use core::iter::once;
@@ -35,15 +39,15 @@ use pimoroni_servo2040::pac::{interrupt, PIO0};
 use servo_pio::calibration::{AngularCalibration, CalibrationData, Point};
 use servo_pio::pwm_cluster::{dma_interrupt, GlobalState, GlobalStates, Handler};
 use servo_pio::servo_cluster::{
-    ServoCluster, ServoClusterBuilder, ServoClusterBuilderError, ServoData, ServoIdx,
+    ServoCluster, ServoClusterBuilder, ServoClusterBuilderError, ServoData,
 };
 use smart_leds::{brightness, SmartLedsWrite, RGB8};
 use ws2812_pio::Ws2812Direct;
 
 const LED_BRIGHTNESS: u8 = 8;
-const SERVOS_PER_LEG: usize = 3;
+const NUM_SERVOS_PER_LEG: usize = 3;
 const NUM_LEGS: usize = 6;
-const NUM_SERVOS: usize = SERVOS_PER_LEG * NUM_LEGS;
+const NUM_SERVOS: usize = NUM_SERVOS_PER_LEG * NUM_LEGS;
 const NUM_CHANNELS: usize = 2;
 
 static mut STATE1: Option<GlobalState<CH0, CH1, PIO0, SM0>> = {
@@ -61,7 +65,8 @@ static mut GLOBALS: GlobalStates<NUM_CHANNELS> = {
 const SAMPLES: usize = 10;
 const UPDATE_MS: u64 = 50;
 
-mod calibrations;
+mod data;
+mod homing;
 
 struct RomFuncs;
 impl ExpensiveMath<f32> for RomFuncs {
@@ -132,79 +137,79 @@ fn main() -> ! {
         &mut pac.RESETS,
     );
 
-    let calibrations = calibrations::calibrations();
+    let calibrations = data::calibrations();
     let servo_pins: [_; NUM_SERVOS] = [
         ServoData {
             pin: pins.servo1.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[0],
+            calibration: calibrations[0][0].cal,
         },
         ServoData {
             pin: pins.servo2.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[1],
+            calibration: calibrations[0][1].cal,
         },
         ServoData {
             pin: pins.servo3.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[2],
+            calibration: calibrations[0][2].cal,
         },
         ServoData {
             pin: pins.servo4.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[3],
+            calibration: calibrations[1][0].cal,
         },
         ServoData {
             pin: pins.servo5.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[4],
+            calibration: calibrations[1][1].cal,
         },
         ServoData {
             pin: pins.servo6.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[5],
+            calibration: calibrations[1][2].cal,
         },
         ServoData {
             pin: pins.servo7.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[6],
+            calibration: calibrations[2][0].cal,
         },
         ServoData {
             pin: pins.servo8.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[7],
+            calibration: calibrations[2][1].cal,
         },
         ServoData {
             pin: pins.servo9.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[8],
+            calibration: calibrations[2][2].cal,
         },
         ServoData {
             pin: pins.servo10.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[9],
+            calibration: calibrations[3][0].cal,
         },
         ServoData {
             pin: pins.servo11.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[10],
+            calibration: calibrations[3][1].cal,
         },
         ServoData {
             pin: pins.servo12.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[11],
+            calibration: calibrations[3][2].cal,
         },
         ServoData {
             pin: pins.servo13.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[12],
+            calibration: calibrations[4][0].cal,
         },
         ServoData {
             pin: pins.servo14.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[13],
+            calibration: calibrations[4][1].cal,
         },
         ServoData {
             pin: pins.servo15.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[14],
+            calibration: calibrations[4][2].cal,
         },
         ServoData {
             pin: pins.servo16.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[15],
+            calibration: calibrations[5][0].cal,
         },
         ServoData {
             pin: pins.servo17.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[16],
+            calibration: calibrations[5][1].cal,
         },
         ServoData {
             pin: pins.servo18.into_mode::<FunctionPio0>().into(),
-            calibration: calibrations[17],
+            calibration: calibrations[5][2].cal,
         },
     ];
 
@@ -265,9 +270,16 @@ fn main() -> ! {
 
     // We need to use the indices provided by the cluster because the servo pin
     // numbers do not line up with the indices in the clusters and PIO.
-    let [servo1, servo2, servo3, servo4, servo5, servo6, servo7, servo8, servo9, servo10, servo11, servo12, servo13, servo14, servo15, servo16, servo17, servo18] =
-        servo_cluster.servos();
-    let servos = [
+    #[rustfmt::skip]
+    let [
+        servo1, servo2, servo3,
+        servo4, servo5, servo6,
+        servo7, servo8, servo9,
+        servo10, servo11, servo12,
+        servo13, servo14, servo15,
+        servo16, servo17, servo18,
+    ] = servo_cluster.servos();
+    let servos1 = [
         [servo1, servo2, servo3],
         [servo4, servo5, servo6],
         [servo7, servo8, servo9],
@@ -275,6 +287,7 @@ fn main() -> ! {
         [servo13, servo14, servo15],
         [servo16, servo17, servo18],
     ];
+    let mut joints = make_joints(servos1, calibrations);
 
     count_down.start(1.secs());
     let _ = nb::block!(count_down.wait());
@@ -309,51 +322,85 @@ fn main() -> ! {
     let mut robot_state = RobotState::new();
     robot_state.body_translation.y = 170.0;
     robot_state.leg_radius = 250.0;
+    robot_state.animation_factor = 2.0;
+    let mut state = State::new(robot_state);
 
     let _ = ws.write(brightness(
         [black(), black(), black(), black(), black(), white()].into_iter(),
         LED_BRIGHTNESS,
     ));
 
-    let mut now = timer.get_counter();
+    // Wait for button press to initialize servos.
+    let user_sw = pins.user_sw.into_pull_up_input();
+    let mut collect_debouncer = Debouncer::new(5, user_sw);
     loop {
-        if i2c_manager.run_loop(&mut i2c_peripheral, &mut robot_state) {
-            log::info!("Received new state?: {:?}", robot_state.state_machine);
+        if collect_debouncer.update() && collect_debouncer.is_low() {
+            break;
         }
 
-        let last_update = now;
+        count_down.start(50.millis());
+        let _ = nb::block!(count_down.wait());
+    }
+
+    let mut now = timer.get_counter();
+    let _ = ws.write(brightness([purple(); 6].into_iter(), LED_BRIGHTNESS));
+    let mut last_update = now;
+    state.live_state.state_machine = state::StateMachine::Homing;
+    let mut homing = Homing::new();
+
+    loop {
         now = timer.get_counter();
+        if i2c_manager.run_loop(&mut i2c_peripheral, &mut state) {
+            let color = match state.live_state.state_machine {
+                state::StateMachine::Paused => cyan(),
+                state::StateMachine::Homing => {
+                    last_update = now;
+                    homing.reset();
+                    yellow()
+                }
+                state::StateMachine::Calibrating => blue(),
+                state::StateMachine::Looping | state::StateMachine::Exploring => {
+                    last_update = now;
+                    green()
+                }
+            };
+            let _ = ws.write(brightness([color; 6].into_iter(), LED_BRIGHTNESS));
+        }
+
         let diff = (now - last_update).to_millis();
         time += diff as f32 / 1000.0;
 
-        let update = match robot_state.state_machine {
-            state::StateMachine::Paused => {
-                let _ = ws.write(brightness([cyan(); 6].into_iter(), LED_BRIGHTNESS));
-                false
-            }
+        let update = match state.live_state.state_machine {
+            state::StateMachine::Paused => false,
             state::StateMachine::Homing => {
-                let _ = ws.write(brightness([yellow(); 6].into_iter(), LED_BRIGHTNESS));
-                false
+                let update = homing.update(diff, &mut servo_cluster, &joints);
+                if update {
+                    last_update = now;
+                }
+                update
             }
             state::StateMachine::Calibrating => {
-                let _ = ws.write(brightness([blue(); 6].into_iter(), LED_BRIGHTNESS));
+                // last_update = now;
+                // true
+                let _ = calibrating_calibrations();
                 false
             }
             state::StateMachine::Looping | state::StateMachine::Exploring => {
+                last_update = now;
                 if time > step_delay {
                     let (_, delay) = walking.next_animation();
                     time %= step_delay;
-                    step_delay = delay as f32 * 2.0;
+                    step_delay = delay as f32 * state.live_state.animation_factor;
                 }
                 let mut leg_visitor = LegVisitor {
                     servo_cluster: &mut servo_cluster,
-                    servos: &servos,
+                    joints: &joints,
                     position_start: Instant::from_ticks(0),
                     servo_start: Instant::from_ticks(0),
                     timer: &timer,
                     errors: [false; 6],
                 };
-                walking.walk(&robot_state, &mut leg_visitor, time / step_delay);
+                walking.walk(&state.live_state, &mut leg_visitor, time / step_delay);
 
                 // Update led color based on whether any errors were encountered for that particular leg.
                 let _ = ws.write(brightness(
@@ -363,6 +410,11 @@ fn main() -> ! {
                         .map(|e| if e { red() } else { green() }),
                     LED_BRIGHTNESS,
                 ));
+                state.update::<NUM_LEGS, NUM_SERVOS_PER_LEG>(
+                    diff as f32,
+                    &mut servo_cluster,
+                    &mut joints,
+                );
                 true
             }
         };
@@ -432,7 +484,7 @@ fn white() -> RGB8 {
 
 struct LegVisitor<'a> {
     servo_cluster: &'a mut ServoCluster<NUM_SERVOS, PIO0, SM0, AngularCalibration>,
-    servos: &'a [[ServoIdx; SERVOS_PER_LEG]; NUM_LEGS],
+    joints: &'a [[Joint; NUM_SERVOS_PER_LEG]; NUM_LEGS],
     #[cfg_attr(not(feature = "debug-visitor"), allow(dead_code))]
     position_start: Instant,
     #[cfg_attr(not(feature = "debug-visitor"), allow(dead_code))]
@@ -468,13 +520,13 @@ impl<'a> VisitLeg<f32, RomFuncs, DefaultConsts> for LegVisitor<'a> {
         //     tibia_servo_angle
         // );
         let idx = leg.idx();
-        let [servo1, servo2, servo3] = self.servos[idx as usize];
+        let [joint1, joint2, joint3] = &self.joints[idx as usize];
         self.servo_cluster
-            .set_value(servo1, tibia_servo_angle, false);
+            .set_value(joint1.servo(), tibia_servo_angle, false);
         self.servo_cluster
-            .set_value(servo2, femur_servo_angle, false);
+            .set_value(joint2.servo(), femur_servo_angle, false);
         self.servo_cluster
-            .set_value(servo3, coxa_servo_angle, false);
+            .set_value(joint3.servo(), coxa_servo_angle, false);
     }
 
     #[cfg(feature = "debug-visitor")]

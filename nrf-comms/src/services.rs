@@ -4,8 +4,8 @@ use state::RobotState;
 
 use crate::command::{CommandUpdate, UpdateKind};
 use crate::server::Server;
-use crate::wrappers::{Translation, UQuaternion, Vector, SM};
-use crate::Command;
+use crate::wrappers::{Translation, UQuaternion, Vector, F32, SM};
+use crate::{log, Command};
 
 #[nrf_softdevice::gatt_service(uuid = "180f")]
 pub(crate) struct BatteryService {
@@ -32,7 +32,7 @@ pub(crate) struct ControllerService {
         notify,
         indicate
     )]
-    pub(crate) speed: f32,
+    pub(crate) animation_factor: F32,
     #[characteristic(
         uuid = "6be80625-e69b-418e-bf01-9abc617cdd9f",
         read,
@@ -40,7 +40,7 @@ pub(crate) struct ControllerService {
         notify,
         indicate
     )]
-    pub(crate) angular_velocity: f32,
+    pub(crate) angular_velocity: F32,
     #[characteristic(
         uuid = "77d6f220-7057-4dc6-8746-8a23b06e53d6",
         read,
@@ -72,7 +72,7 @@ pub(crate) struct ControllerService {
         notify,
         indicate
     )]
-    pub(crate) leg_radius: f32,
+    pub(crate) leg_radius: F32,
     #[characteristic(
         uuid = "d007632f-10e5-427a-b158-482aeb48b90e",
         read,
@@ -83,7 +83,7 @@ pub(crate) struct ControllerService {
     pub(crate) battery_update_interval_ms: u32,
 }
 
-#[derive(defmt::Format)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub(crate) enum UpdateError {
     Notify(NotifyValueError),
     Indicate(IndicateValueError),
@@ -109,21 +109,23 @@ pub(crate) fn update(
     robot_state: &RobotState,
 ) -> Result<(), UpdateError> {
     match (command, command_update.get(command)) {
-        (Command::Sync, Some(UpdateKind::Notify)) => server
-            .bas()
-            .battery_level_notify(conn, &(robot_state.battery_level as u8))?,
+        (Command::Sync(_), Some(UpdateKind::Notify)) => {
+            server
+                .bas()
+                .battery_level_notify(conn, &(robot_state.battery_level as u8))?;
+        }
         (Command::ChangeState(_), Some(UpdateKind::Notify)) => server
             .controller()
             .state_notify(conn, &SM(robot_state.state_machine))?,
         (Command::ChangeState(_), Some(UpdateKind::Indicate)) => server
             .controller()
             .state_indicate(conn, &SM(robot_state.state_machine))?,
-        (Command::SetSpeed(_), Some(UpdateKind::Notify)) => {
-            server.controller().speed_notify(conn, &robot_state.speed)?
-        }
-        (Command::SetSpeed(_), Some(UpdateKind::Indicate)) => server
+        (Command::SetAnimationFactor(_), Some(UpdateKind::Notify)) => server
             .controller()
-            .speed_indicate(conn, &robot_state.speed)?,
+            .animation_factor_notify(conn, &F32(robot_state.animation_factor))?,
+        (Command::SetAnimationFactor(_), Some(UpdateKind::Indicate)) => server
+            .controller()
+            .animation_factor_indicate(conn, &F32(robot_state.animation_factor))?,
         (Command::SetBodyTranslation(_), Some(UpdateKind::Notify)) => server
             .controller()
             .body_translation_notify(conn, &Translation(robot_state.body_translation))?,
@@ -144,18 +146,18 @@ pub(crate) fn update(
             .motion_vector_indicate(conn, &Vector(robot_state.motion_vector))?,
         (Command::SetAngularVelocity(_), Some(UpdateKind::Notify)) => server
             .controller()
-            .angular_velocity_notify(conn, &robot_state.angular_velocity)?,
+            .angular_velocity_notify(conn, &F32(robot_state.angular_velocity))?,
         (Command::SetAngularVelocity(_), Some(UpdateKind::Indicate)) => server
             .controller()
-            .angular_velocity_indicate(conn, &robot_state.angular_velocity)?,
+            .angular_velocity_indicate(conn, &F32(robot_state.angular_velocity))?,
         (Command::SetLegRadius(_), Some(UpdateKind::Notify)) => server
             .controller()
-            .leg_radius_notify(conn, &robot_state.leg_radius)?,
+            .leg_radius_notify(conn, &F32(robot_state.leg_radius))?,
         (Command::SetLegRadius(_), Some(UpdateKind::Indicate)) => server
             .controller()
-            .leg_radius_indicate(conn, &robot_state.leg_radius)?,
+            .leg_radius_indicate(conn, &F32(robot_state.leg_radius))?,
         (_, None) => {}
-        (command, update) => defmt::warn!("Unexpected combination: {}, {}", command, update),
+        (command, update) => log::warn!("Unexpected combination: {}, {}", command, update),
     }
     Ok(())
 }

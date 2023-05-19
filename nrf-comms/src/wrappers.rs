@@ -10,7 +10,9 @@ impl FixedGattValue for Translation {
     const SIZE: usize = core::mem::size_of::<f32>() * 3;
 
     fn from_gatt(data: &[u8]) -> Self {
+        log::info!("Vector::from_gatt({:?})", data);
         let data: &[f32] = unsafe { core::slice::from_raw_parts(data.as_ptr() as *const f32, 3) };
+        log::info!("Vector::from_gatt data({:?})", data);
         Self(Translation3::new(data[0], data[1], data[2]))
     }
 
@@ -25,13 +27,37 @@ impl FixedGattValue for Translation {
 }
 
 #[derive(Copy, Clone)]
+pub(crate) struct F32(pub(crate) f32);
+impl FixedGattValue for F32 {
+    const SIZE: usize = core::mem::size_of::<f32>();
+
+    fn from_gatt(data: &[u8]) -> Self {
+        log::info!("F32::from_gatt({:?})", data);
+        let data: &[f32] = unsafe { core::slice::from_raw_parts(data.as_ptr() as *const f32, 1) };
+        log::info!("F32::from_gatt data({:?})", data);
+        Self(data[0])
+    }
+
+    fn to_gatt(&self) -> &[u8] {
+        unsafe {
+            core::slice::from_raw_parts(
+                &self.0 as *const _ as *const u8,
+                core::mem::size_of::<f32>(),
+            )
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
 pub(crate) struct Vector(pub(crate) Vector3<f32>);
 
 impl FixedGattValue for Vector {
     const SIZE: usize = core::mem::size_of::<f32>() * 3;
 
     fn from_gatt(data: &[u8]) -> Self {
+        log::info!("Vector::from_gatt({:?})", data);
         let data: &[f32] = unsafe { core::slice::from_raw_parts(data.as_ptr() as *const f32, 3) };
+        log::info!("Vector::from_gatt data({:?})", data);
         Self(Vector3::new(data[0], data[1], data[2]))
     }
 
@@ -68,7 +94,8 @@ impl FixedGattValue for UQuaternion {
     }
 }
 
-#[derive(Copy, Clone, defmt::Format)]
+#[derive(Copy, Clone)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub(crate) struct SM(pub(crate) StateMachine);
 
 impl FixedGattValue for SM {

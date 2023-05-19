@@ -6,7 +6,7 @@ use command::{Command, CommandUpdate, StateManager};
 use communication::{I2cRequest, Serialize, COMMS_ADDR};
 use core::cell::RefCell;
 use core::mem;
-use defmt::unwrap;
+#[cfg(feature = "defmt")]
 use defmt_rtt as _; // global logger
 use embassy_executor::Spawner;
 use embassy_nrf::interrupt::{self, Interrupt, InterruptExt, Priority};
@@ -110,8 +110,8 @@ async fn main(spawner: Spawner) {
     };
 
     let sd = Softdevice::enable(&config);
-    let server = unwrap!(Server::new(sd));
-    unwrap!(spawner.spawn(softdevice_task(sd)));
+    let server = log::unwrap!(Server::new(sd));
+    log::unwrap!(spawner.spawn(softdevice_task(sd)));
     let server = &*SERVER.init(server);
     let connection = CONNECTION.init(RefCell::new(None));
     let state_manager = STATE_MANAGER.init(RefCell::new(StateManager::new()));
@@ -154,7 +154,7 @@ async fn main(spawner: Spawner) {
             adv_data,
             scan_data,
         };
-        let conn = unwrap!(peripheral::advertise_connectable(sd, adv, &config).await);
+        let conn = log::unwrap!(peripheral::advertise_connectable(sd, adv, &config).await);
         loop {
             if let Ok(mut connection) = connection.try_borrow_mut() {
                 *connection = Some(conn);
