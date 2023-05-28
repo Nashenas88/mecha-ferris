@@ -451,7 +451,7 @@ fun ConnectedView(
                 }
 
                 ScaffoldState.Calibrating -> {
-                    CalibratingView()
+                    CalibratingView(viewModel.calibratingViewModel)
                 }
 
                 ScaffoldState.Controls -> {

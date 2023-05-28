@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import com.mechaferris.mechaferris.ui.calibrating.CalibratingViewModel
 
 class ConnectedViewModel : ViewModel() {
     private var bleServiceData: BleService.BluetoothServiceBinder? = null
@@ -16,7 +17,7 @@ class ConnectedViewModel : ViewModel() {
     var awaitingBatteryLevel: Boolean = false
     var stateMachine: StateMachine? by mutableStateOf(null)
     var awaitingStateMachine: Boolean = false
-    var previousStateMachine: StateMachine? = null
+    private var previousStateMachine: StateMachine? = null
     var animationFactor: Float? by mutableStateOf(null)
     var awaitingAnimationFactor: Boolean = false
     var angularVelocity: Float? by mutableStateOf(null)
@@ -31,6 +32,7 @@ class ConnectedViewModel : ViewModel() {
     var awaitingLegRadius: Boolean = false
     var batteryUpdateIntervalMs: Int? by mutableStateOf(null)
     var scaffoldState: ScaffoldState by mutableStateOf(ScaffoldState.Home)
+    val calibratingViewModel = CalibratingViewModel()
 
     fun setBleServiceData(bleServiceData: BleService.BluetoothServiceBinder) {
         this.bleServiceData = bleServiceData
