@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+option java_package = "com.mechaferris.calibration";
+option java_outer_classname = "CalibrationProto";
+option java_multiple_files = true;
+
+message ServoCalibration {
+  int32 leg = 1;
+  Joint joint = 2;
+  CalibrationKind kind = 3;
+  float pulse = 5;
+  float angle = 4;
+}
+
+message Calibration {
+  repeated ServoCalibration calibrations = 1;
+}
+
+enum Joint {
+  COXA = 0;
+  FEMUR = 1;
+  TIBIA = 2;
+}
+
+enum CalibrationKind {
+  HOME = 0;
+  MIN = 1;
+  MID = 2;
+  MAX = 3;
+}
