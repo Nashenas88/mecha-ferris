@@ -13,6 +13,26 @@ data class Quaternion(
     val w: Float = 0f
 )
 
+enum class Joint(val num: Int) {
+    COXA(0),
+    FEMUR(1),
+    TIBIA(2)
+}
+
+enum class CalibrationKind(val num: Int) {
+    MIN(0),
+    MID(1),
+    MAX(2),
+    HOME(3),
+}
+
+data class CalibrationData(
+    val leg: Int,
+    val joint: Joint,
+    val kind: CalibrationKind,
+    val pulse: Float,
+)
+
 enum class StateMachine(val num: Int) {
     PAUSED(1),
     HOMING(2),

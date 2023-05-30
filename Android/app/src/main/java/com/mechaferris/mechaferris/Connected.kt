@@ -30,7 +30,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -94,6 +93,7 @@ class Connected : ComponentActivity() {
     private val bodyRotationChangeNotifications = Channel<Quaternion>()
     private val legRadiusChangeNotifications = Channel<Float>()
     private val batteryUpdateIntervalMsChangeNotifications = Channel<Int>()
+    private val calibrationPulseChangeNotifications = Channel<Float>()
 
 
     private inner class MFServiceConn : ServiceConnection {
@@ -118,6 +118,9 @@ class Connected : ComponentActivity() {
                     bleServiceData.setBatteryUpdateIntervalMsChangedChannel(
                         batteryUpdateIntervalMsChangeNotifications
                     )
+                    bleServiceData.setCalibrationPulseChangedChannel(
+                        calibrationPulseChangeNotifications
+                    )
                     connectedViewModel.setBleServiceData(bleServiceData)
                     defaultScope.launch {
                         try {
@@ -135,6 +138,19 @@ class Connected : ComponentActivity() {
                                 connectedViewModel.legRadius = bleServiceData.getLegRadius(it)
                                 connectedViewModel.batteryUpdateIntervalMs =
                                     bleServiceData.getBatteryUpdateIntervalMs(it)
+
+                                // sync calibration data?
+                                connectedViewModel.calibratingViewModel.let {
+                                    cvm ->
+                                    val pulse = bleServiceData.getCalibrationData(it,
+                                        cvm.legListModel.selected.value,
+                                        cvm.jointListModel.selected.value,
+                                        cvm.kindListModel.value.selected.value,
+                                    )
+                                    pulse?.let { p ->
+                                        cvm.pulse.value = p
+                                    }
+                                }
                             }
                         } catch (e: Exception) {
                             Log.e("Connected", "Failed to sync: $e")
@@ -270,7 +286,6 @@ class Connected : ComponentActivity() {
 }
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConnectedView(
     coroutineScope: CoroutineScope,
@@ -451,7 +466,7 @@ fun ConnectedView(
                 }
 
                 ScaffoldState.Calibrating -> {
-                    CalibratingView(viewModel.calibratingViewModel)
+                    CalibratingView(context, viewModel.calibratingViewModel)
                 }
 
                 ScaffoldState.Controls -> {

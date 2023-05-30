@@ -7,6 +7,7 @@ import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothGatt
 import android.bluetooth.BluetoothGattCharacteristic
+import android.bluetooth.BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
 import android.bluetooth.BluetoothManager
 import android.content.BroadcastReceiver
 import android.content.Context
@@ -17,6 +18,7 @@ import android.os.Binder
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.ActivityCompat
+import com.mechaferris.calibration.ServoCalibration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.SendChannel
@@ -41,6 +43,7 @@ class BleService : Service() {
     private var bodyRotationChangeNotifications: SendChannel<Quaternion>? = null
     private var legRadiusChangeNotifications: SendChannel<Float>? = null
     private var batteryUpdateIntervalMsChangeNotifications: SendChannel<Int>? = null
+    private var calibrationPulseChangeNotifications: SendChannel<Float>? = null
     private var onDeviceFound: ((BluetoothDevice) -> Unit)? = null
     private var onDeviceLost: ((BluetoothDevice) -> Unit)? = null
     private var clientManagers = mutableMapOf<String, ClientManager>()
@@ -189,6 +192,15 @@ class BleService : Service() {
             clientManagers[address]?.setBatteryUpdateIntervalMs(intervalMs)
         }
 
+        suspend fun setCalibrationPulse(address: String, calibration: ServoCalibration) {
+            clientManagers[address]?.setCalibrationPulse(
+                calibration.leg,
+                calibration.joint.number,
+                calibration.kind.number,
+                calibration.pulse
+            )
+        }
+
         fun setBatteryChangedChannel(channel: SendChannel<Int>) {
             batteryChangeNotifications = channel
         }
@@ -225,6 +237,10 @@ class BleService : Service() {
             batteryUpdateIntervalMsChangeNotifications = channel
         }
 
+        fun setCalibrationPulseChangedChannel(channel: SendChannel<Float>) {
+            calibrationPulseChangeNotifications = channel
+        }
+
         suspend fun getBatteryLevel(address: String): Int? {
             return clientManagers[address]?.getBatteryLevel()
         }
@@ -259,6 +275,15 @@ class BleService : Service() {
 
         suspend fun getBatteryUpdateIntervalMs(address: String): Int? {
             return clientManagers[address]?.getBatteryUpdateIntervalMs()
+        }
+
+        suspend fun getCalibrationData(
+            address: String,
+            leg: Int,
+            joint: Int,
+            kind: Int
+        ): Float? {
+            return clientManagers[address]?.getCalibrationPulse(leg, joint, kind)
         }
 
         fun setDeviceCallbacks(
@@ -325,6 +350,8 @@ class BleService : Service() {
         private var bodyRotationCharacteristic: BluetoothGattCharacteristic? = null
         private var legRadiusCharacteristic: BluetoothGattCharacteristic? = null
         private var batteryUpdateIntervalMsCharacteristic: BluetoothGattCharacteristic? = null
+        private var calibrationIndexCharacteristic: BluetoothGattCharacteristic? = null
+        private var calibrationPulseCharacteristic: BluetoothGattCharacteristic? = null
 
         override fun isRequiredServiceSupported(gatt: BluetoothGatt): Boolean {
             val bas = gatt.getService(MechaFerrisServiceProfile.basUuid)
@@ -352,6 +379,10 @@ class BleService : Service() {
                     service.getCharacteristic(MechaFerrisServiceProfile.characteristicLegRadius)
                 batteryUpdateIntervalMsCharacteristic =
                     service.getCharacteristic(MechaFerrisServiceProfile.characteristicBatteryUpdateIntervalMs)
+                calibrationIndexCharacteristic =
+                    service.getCharacteristic(MechaFerrisServiceProfile.characteristicCalibrationIndex)
+                calibrationPulseCharacteristic =
+                    service.getCharacteristic(MechaFerrisServiceProfile.characteristicCalibrationPulse)
             }
 
             return !(batteryCharacteristic == null
@@ -363,7 +394,9 @@ class BleService : Service() {
                     || bodyTranslationCharacteristic == null
                     || bodyRotationCharacteristic == null
                     || legRadiusCharacteristic == null
-                    || batteryUpdateIntervalMsCharacteristic == null)
+                    || batteryUpdateIntervalMsCharacteristic == null
+                    || calibrationIndexCharacteristic == null
+                    || calibrationPulseCharacteristic == null)
         }
 
         override fun initialize() {
@@ -468,6 +501,14 @@ class BleService : Service() {
                     }
                 }
             }
+            setNotificationCallback(calibrationPulseCharacteristic).with { _, data ->
+                val calibrationData = data.value?.let { floatBufferFromByteArray(it)[0] }
+                calibrationData?.let {
+                    defaultScope.launch {
+                        calibrationPulseChangeNotifications?.send(it)
+                    }
+                }
+            }
 
             beginAtomicRequestQueue()
                 .add(enableNotifications(batteryCharacteristic)
@@ -527,6 +568,12 @@ class BleService : Service() {
                         )
                         disconnect().enqueue()
                     })
+                .add(enableNotifications(calibrationIndexCharacteristic)
+                    .done { Log.i(TAG, "Enabled calibrationData notifications") }
+                    .fail { _: BluetoothDevice?, status: Int ->
+                        log(Log.ERROR, "Could not subscribe to calibrationData: $status")
+                        disconnect().enqueue()
+                    })
                 .done {
                     Log.i(TAG, "Target initialized")
                 }
@@ -555,14 +602,6 @@ class BleService : Service() {
             bluetoothDevice?.let {
                 onDeviceFound?.invoke(it)
             }
-        }
-
-        private fun floatToByteArray(value: Float): ByteArray {
-            return ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putFloat(value).array()
-        }
-
-        private fun floatBufferFromByteArray(value: ByteArray): FloatBuffer {
-            return ByteBuffer.wrap(value).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
         }
 
         suspend fun setBatteryLevel(batteryLevel: Int) {
@@ -689,6 +728,25 @@ class BleService : Service() {
                 )
                     .done { continuation.resumeWith(Result.success(Unit)) }
                     .fail { _, status -> continuation.resumeWith(Result.failure(Exception("Could not set battery update interval: $status"))) }
+                    .enqueue()
+            }
+        }
+
+        suspend fun setCalibrationPulse(leg: Int, joint: Int, kind: Int, pulse: Float) {
+            suspendCancellableCoroutine { continuation ->
+                writeCharacteristic(
+                    calibrationIndexCharacteristic,
+                    Data(byteArrayOf(leg.toByte(), joint.toByte(), kind.toByte())),
+                    WRITE_TYPE_DEFAULT
+                )
+                    .then {
+                        writeCharacteristic(
+                            calibrationPulseCharacteristic,
+                            Data(floatToByteArray(pulse)),
+                            WRITE_TYPE_DEFAULT
+                        )
+                    }
+                    .fail { _, status -> continuation.resumeWith(Result.failure(Exception("Could not set calibration pulse: $status"))) }
                     .enqueue()
             }
         }
@@ -877,10 +935,44 @@ class BleService : Service() {
                     .enqueue()
             }
         }
+
+        suspend fun getCalibrationPulse(
+            leg: Int,
+            joint: Int,
+            kind: Int
+        ): Float? {
+            return suspendCancellableCoroutine { continuation ->
+                val index = ByteBuffer.allocate(3).put(leg.toByte()).put(joint.toByte())
+                    .put(kind.toByte()).array()
+                writeCharacteristic(
+                    calibrationIndexCharacteristic,
+                    index,
+                    WRITE_TYPE_DEFAULT
+                ).then {
+                    readCharacteristic(calibrationPulseCharacteristic).with { _, data ->
+                        continuation.resumeWith(
+                            Result.success(data.value?.let { floatBufferFromByteArray(it).get(0) })
+                        )
+                    }
+                        .fail { _, status -> continuation.resumeWith(Result.failure(Exception("Could not get calibration data: $status"))) }
+                        .enqueue()
+                }
+                    .fail { _, status -> continuation.resumeWith(Result.failure(Exception("Could not get calibration data: $status"))) }
+                    .enqueue()
+            }
+        }
     }
 
     private fun uint8ToByteArray(num: Int): ByteArray? {
         return ByteBuffer.allocate(1).put(num.toByte()).array()
+    }
+
+    private fun floatToByteArray(value: Float): ByteArray {
+        return ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putFloat(value).array()
+    }
+
+    private fun floatBufferFromByteArray(value: ByteArray, offset: Int = 0): FloatBuffer {
+        return ByteBuffer.wrap(value, offset, 4).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
     }
 
     object MechaFerrisServiceProfile {
@@ -904,5 +996,9 @@ class BleService : Service() {
         val characteristicLegRadius: UUID = UUID.fromString("2735f1d0-b944-4efe-960c-10380d061052")
         val characteristicBatteryUpdateIntervalMs: UUID =
             UUID.fromString("d007632f-10e5-427a-b158-482aeb48b90e")
+        val characteristicCalibrationIndex: UUID =
+            UUID.fromString("22b55af4-32f7-41bc-88f8-021e5dce9f60")
+        val characteristicCalibrationPulse: UUID =
+            UUID.fromString("3c883502-a5ad-4d3a-abb0-1248374e9da2")
     }
 }
