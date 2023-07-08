@@ -1,0 +1,45 @@
+digraph {
+    subgraph cluster_Android {
+        label = "Android";
+        app [label = "App";];
+    }
+    subgraph cluster_MechaFerris {
+        label = "MechaFerris";
+        servos;
+        
+        subgraph cluster_nRF52840 {
+            label = "Nordic nRF52840";
+            nordic_service [label = "service";];
+            nordic_i2c [label = "robot_comm task";];
+        }
+        
+        subgraph cluster_servo_2040 {
+            label = "servo2040";
+            i2c_manager;
+            kinematics;
+            state_machine;
+            pio;
+            dma;
+            
+            subgraph {
+                rank = same;
+                i2c_manager -> state_machine [dir = both; label = "sync";];
+            }
+            state_machine -> kinematics [label = "update";];
+            subgraph {
+                rank = same;
+                kinematics -> dma [label = "Update PWM";];
+                dma -> dma [label = "Swap Buffers";];
+            }
+            dma -> pio [label = "New PWM";];
+        }
+        
+        sensors [label = "Hall Effect Sensors";];
+    }
+    
+    app -> nordic_service [label = "BlueTooth"; dir = both;];
+    nordic_service -> nordic_i2c [label = "sync"; dir = both;];
+    nordic_i2c -> i2c_manager [label = "I2C"; dir = both;];
+    sensors -> state_machine [label = "ADC";];
+    pio -> servos [label = "PWM";];
+}
