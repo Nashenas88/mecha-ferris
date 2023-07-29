@@ -5,8 +5,8 @@ use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, Sender};
 use nalgebra::{Translation3, UnitQuaternion, Vector3};
-use nrf_softdevice::ble::gatt_server::{RegisterError, RunError};
-use nrf_softdevice::ble::{gatt_server, Connection};
+use nrf_softdevice::ble::gatt_server::RegisterError;
+use nrf_softdevice::ble::{gatt_server, Connection, DisconnectedError};
 use nrf_softdevice::Softdevice;
 use state::StateMachine;
 
@@ -75,7 +75,7 @@ impl Server {
         command_update: &'static RefCell<CommandUpdate>,
         channel: &'static Channel<CriticalSectionRawMutex, I2cRequest, 1>,
         spawner: Spawner,
-    ) -> Result<(), RunError> {
+    ) -> DisconnectedError {
         gatt_server::run(conn.borrow().as_ref().unwrap(), &self.0, |e| match e {
             ServerInnerEvent::Bas(e) => match e {
                 BatteryServiceEvent::BatteryLevelCccdWrite { notifications } => {

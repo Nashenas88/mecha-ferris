@@ -8,11 +8,11 @@ edition = "2021"
 [dependencies]
 defmt = { version = "=0.3.0", optional = true }
 defmt-rtt = { version = "0.4.0", optional = true }
-panic-probe = { version = "0.3.0", features=["print-defmt"] }
+panic-probe = { version = "0.3.0", features = ["print-defmt"] }
 cortex-m = "0.7.7"
 cortex-m-rt = "0.7.3"
 futures = { version = "0.3.27", default-features = false }
-byte-strings-proc_macros = "0.2.2"
+byte-strings-proc_macros = "0.3.1"
 critical-section = "1.1.1"
 state = { path = "../state" }
 communication = { path = "../communication" }
@@ -20,37 +20,53 @@ nalgebra = { version = "0.32.2", default-features = false }
 scapegoat = "2.3.0"
 static_cell = "1.0.0"
 
+
 [features]
 defmt = ["dep:defmt", "defmt-rtt", "communication/defmt"]
 
 [dependencies.embassy-executor]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
-features = ["defmt", "nightly", "integrated-timers"]
+rev = "fcbfd224a729c38d5ff94d94a25321a819254630"
+features = [
+    "defmt",
+    "nightly",
+    "integrated-timers",
+    "executor-thread",
+    "arch-cortex-m",
+]
 
 [dependencies.embassy-sync]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
+rev = "fcbfd224a729c38d5ff94d94a25321a819254630"
 features = ["defmt", "nightly"]
 
 [dependencies.embassy-time]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
+rev = "fcbfd224a729c38d5ff94d94a25321a819254630"
 features = ["defmt", "nightly", "defmt-timestamp-uptime"]
 
 [dependencies.embassy-nrf]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "299689dfa2a5e160dbd6aa474772a9317a219084"
+rev = "fcbfd224a729c38d5ff94d94a25321a819254630"
 features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "nightly"]
 
 [dependencies.nrf-softdevice]
 git = "https://github.com/embassy-rs/nrf-softdevice.git"
-rev = "a661d3713ac74cf94bc597ffc0fb4d55b099f915"
-features = ["nightly", "defmt", "nrf52840", "s140", "ble-peripheral", "ble-central", "critical-section-impl", "ble-gatt-server"]
+rev = "6415c63ac171f6f34f0ce0f08290d52b5cfa2a06"
+features = [
+    "nightly",
+    "defmt",
+    "nrf52840",
+    "s140",
+    "ble-peripheral",
+    "ble-central",
+    "critical-section-impl",
+    "ble-gatt-server",
+]
 
 [dependencies.nrf-softdevice-s140]
 git = "https://github.com/embassy-rs/nrf-softdevice.git"
-rev = "a661d3713ac74cf94bc597ffc0fb4d55b099f915"
+rev = "6415c63ac171f6f34f0ce0f08290d52b5cfa2a06"
 
 # cargo build/run
 [profile.dev]
@@ -103,3 +119,6 @@ debug-assertions = false
 incremental = false
 lto = 'fat'
 opt-level = 3
+
+[patch.crates-io]
+proc-macro2 = { git = "https://github.com/dtolnay/proc-macro2.git", rev = "64b4608278be46fcc8d63ae1138da8cb600e258a" } # version = "=1.0.66" }

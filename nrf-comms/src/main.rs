@@ -137,10 +137,7 @@ async fn main(spawner: Spawner) {
     ];
 
     let config = twim::Config::default();
-    {
-        let irq = unsafe { interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0::steal() };
-        irq.set_priority(interrupt::Priority::P3);
-    }
+    Interrupt::SPIM0_SPIS0_TWIM0_TWIS0_SPI0_TWI0.set_priority(interrupt::Priority::P3);
     let i2c = Twim::new(p.TWISPI0, Irqs, p.P0_16, p.P0_14, config);
 
     let robot_comms_token = robot_comm(i2c, channel.receiver());
@@ -179,8 +176,6 @@ async fn main(spawner: Spawner) {
             }
         }
 
-        if let Err(e) = res {
-            log::error!("gatt_server run exited with error: {:?}", e);
-        }
+        log::error!("gatt_server run exited with error: {:?}", res);
     }
 }
