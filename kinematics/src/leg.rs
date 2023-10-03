@@ -172,61 +172,61 @@ impl<F, T, C> Leg<F, T, C>
 where
     F: Copy
         + RealField
-        + ~const MyMul<Output = F>
-        + ~const MyAdd<Output = F>
-        + ~const MySub<Output = F>
-        + ~const MyNeg<Output = F>
+        + MyMul<Output = F>
+        + MyAdd<Output = F>
+        + MySub<Output = F>
+        + MyNeg<Output = F>
         + Two
         + FloatConst,
     T: ExpensiveMath<F>,
     C: LegConsts<F>,
 {
-    const FL2: F = MyMul::mul(
-        <C as LegConsts<F>>::FEMUR_LENGTH,
-        <C as LegConsts<F>>::FEMUR_LENGTH,
-    );
-    const TL2: F = MyMul::mul(
-        <C as LegConsts<F>>::TIBIA_LENGTH,
-        <C as LegConsts<F>>::TIBIA_LENGTH,
-    );
-    const TF2: F = MyMul::mul(
-        MyMul::mul(<F as Two>::TWO, <C as LegConsts<F>>::FEMUR_LENGTH),
-        <C as LegConsts<F>>::TIBIA_LENGTH,
-    );
-    const MAX_LEG_LEN2: F = MyMul::mul(
-        MyAdd::add(
-            <C as LegConsts<F>>::FEMUR_LENGTH,
-            <C as LegConsts<F>>::TIBIA_LENGTH,
-        ),
-        MyAdd::add(
-            <C as LegConsts<F>>::FEMUR_LENGTH,
-            <C as LegConsts<F>>::TIBIA_LENGTH,
-        ),
-    );
-    const MIN_LEG_LEN2: F = MyMul::mul(
-        MySub::sub(
-            <C as LegConsts<F>>::TIBIA_LENGTH,
-            <C as LegConsts<F>>::FEMUR_LENGTH,
-        ),
-        MySub::sub(
-            <C as LegConsts<F>>::TIBIA_LENGTH,
-            <C as LegConsts<F>>::FEMUR_LENGTH,
-        ),
-    );
-
     pub fn go_to(&mut self, target: Point3<F>) -> Result<(), LegError<F>> {
+        let fl2: F = MyMul::mul(
+            <C as LegConsts<F>>::FEMUR_LENGTH,
+            <C as LegConsts<F>>::FEMUR_LENGTH,
+        );
+        let tl2: F = MyMul::mul(
+            <C as LegConsts<F>>::TIBIA_LENGTH,
+            <C as LegConsts<F>>::TIBIA_LENGTH,
+        );
+        let tf2: F = MyMul::mul(
+            MyMul::mul(<F as Two>::TWO, <C as LegConsts<F>>::FEMUR_LENGTH),
+            <C as LegConsts<F>>::TIBIA_LENGTH,
+        );
+        let max_leg_len2: F = MyMul::mul(
+            MyAdd::add(
+                <C as LegConsts<F>>::FEMUR_LENGTH,
+                <C as LegConsts<F>>::TIBIA_LENGTH,
+            ),
+            MyAdd::add(
+                <C as LegConsts<F>>::FEMUR_LENGTH,
+                <C as LegConsts<F>>::TIBIA_LENGTH,
+            ),
+        );
+        let min_leg_len2: F = MyMul::mul(
+            MySub::sub(
+                <C as LegConsts<F>>::TIBIA_LENGTH,
+                <C as LegConsts<F>>::FEMUR_LENGTH,
+            ),
+            MySub::sub(
+                <C as LegConsts<F>>::TIBIA_LENGTH,
+                <C as LegConsts<F>>::FEMUR_LENGTH,
+            ),
+        );
+
         let coxa_angle = T::atan2(target.x, target.z);
         let origin_to_femur_servo = Self::coxa_to_femur(coxa_angle);
         let femur_point = origin_to_femur_servo.transform_point(&target);
 
         let distance_squared = femur_point.z * femur_point.z + femur_point.x * femur_point.x;
-        if distance_squared > Self::MAX_LEG_LEN2 {
-            return Err(LegError::TooFar(distance_squared, Self::MAX_LEG_LEN2));
-        } else if distance_squared < Self::MIN_LEG_LEN2 {
-            return Err(LegError::TooClose(distance_squared, Self::MIN_LEG_LEN2));
+        if distance_squared > max_leg_len2 {
+            return Err(LegError::TooFar(distance_squared, max_leg_len2));
+        } else if distance_squared < min_leg_len2 {
+            return Err(LegError::TooClose(distance_squared, min_leg_len2));
         }
 
-        let tibia_angle = T::acos((distance_squared - Self::FL2 - Self::TL2) / Self::TF2);
+        let tibia_angle = T::acos((distance_squared - fl2 - tl2) / tf2);
         if !tibia_angle.is_finite() {
             return Err(LegError::NonFiniteCalculation);
         }

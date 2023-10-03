@@ -1,5 +1,15 @@
 use core::cell::RefCell;
 
+use crate::command::{
+    handle_command, CalibrationIndex, CommandUpdate, StateManager, SyncKind, UpdateKind,
+};
+use crate::log;
+use crate::services::{update, CalibrationDatum, SetRes, SetResult, UpdateError};
+use crate::wrappers::{Translation, UQuaternion, Vector, F32, SM};
+use crate::{
+    BatteryService, BatteryServiceEvent, Command, ControllerService, ControllerServiceEvent,
+    ROBOT_STATE,
+};
 use communication::I2cRequest;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -9,15 +19,6 @@ use nrf_softdevice::ble::gatt_server::RegisterError;
 use nrf_softdevice::ble::{gatt_server, Connection, DisconnectedError};
 use nrf_softdevice::Softdevice;
 use state::StateMachine;
-
-use crate::command::{handle_command, CommandUpdate, StateManager, SyncKind, UpdateKind};
-use crate::log;
-use crate::services::{update, UpdateError};
-use crate::wrappers::{Translation, UQuaternion, Vector, F32, SM};
-use crate::{
-    BatteryService, BatteryServiceEvent, Command, ControllerService, ControllerServiceEvent,
-    ROBOT_STATE,
-};
 
 #[nrf_softdevice::gatt_server]
 pub(crate) struct ServerInner {
@@ -56,6 +57,28 @@ impl Server {
         server
             .controller
             .battery_update_interval_ms_set(&0)
+            .unwrap();
+        server
+            .controller
+            .get_calibration_result_set(&CalibrationDatum::new(
+                0.0,
+                CalibrationIndex {
+                    leg: 0,
+                    joint: 0,
+                    kind: 0,
+                },
+            ))
+            .unwrap();
+        server
+            .controller
+            .set_calibration_result_set(&SetResult {
+                index: CalibrationIndex {
+                    leg: 0,
+                    joint: 0,
+                    kind: 0,
+                },
+                result: SetRes::InvalidIndex,
+            })
             .unwrap();
         Ok(Server(server))
     }
@@ -186,6 +209,24 @@ impl Server {
                             UpdateKind::from_cccd(notifications, indications);
                         None
                     }
+                    ControllerServiceEvent::GetCalibationForWrite(calibration_index) => {
+                        Some(Command::GetCalibrationFor(calibration_index))
+                    }
+                    ControllerServiceEvent::GetCalibrationResultCccdWrite { notifications } => {
+                        log::info!("get calibration result notifications: {}", notifications);
+                        command_update.borrow_mut().get_calibration_result =
+                            UpdateKind::from_cccd(notifications, false);
+                        None
+                    }
+                    ControllerServiceEvent::SetCalibrationDatumWrite(datum) => {
+                        Some(Command::SetCalibrationDatum(datum.value.0, datum.index))
+                    }
+                    ControllerServiceEvent::SetCalibrationResultCccdWrite { notifications } => {
+                        log::info!("calibration result notifications: {}", notifications);
+                        command_update.borrow_mut().set_calibration_result =
+                            UpdateKind::from_cccd(notifications, false);
+                        None
+                    }
                 };
 
                 if let Some(command) = command {
@@ -228,14 +269,15 @@ async fn command_task(
         command,
     )
     .await;
-    if let Err(e) = res {
+    if let Err(ref e) = res {
         log::error!("Failed to process command {}: {}", command, e);
     }
     let robot_state = &*robot_state;
+    let command_result = command.to_result(robot_state, res);
     if let Ok(conn) = conn.try_borrow() {
         if let Some(conn) = &*conn {
             let res: Result<(), UpdateError> =
-                update(server, conn, &command_update.borrow(), command, robot_state);
+                update(server, conn, &command_update.borrow(), command_result);
             if let Err(e) = res {
                 log::info!("send notification error: {:?}", e);
             }

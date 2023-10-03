@@ -49,8 +49,12 @@ where
     T: ExpensiveMath<f32>,
     C: LegConsts<f32>,
 {
-    pub fn home<V>(&mut self, robot_state: &RobotState, visitor: &mut V, time: f32)
-    where
+    pub fn home<V, J, const SPL: usize, const S: usize>(
+        &mut self,
+        robot_state: &RobotState<J, SPL, S>,
+        visitor: &mut V,
+        time: f32,
+    ) where
         V: VisitLeg<f32, T, C>,
     {
         let targets = self
@@ -128,8 +132,12 @@ where
     T: ExpensiveMath<f32>,
     C: LegConsts<f32>,
 {
-    pub fn walk<V>(&mut self, robot_state: &RobotState, leg_visitor: &mut V, time: f32)
-    where
+    pub fn walk<V, J, const SPL: usize, const S: usize>(
+        &mut self,
+        robot_state: &RobotState<J, SPL, S>,
+        leg_visitor: &mut V,
+        time: f32,
+    ) where
         V: VisitLeg<f32, T, C>,
     {
         // leg_visitor.position_start();

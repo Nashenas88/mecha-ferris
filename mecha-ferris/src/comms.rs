@@ -1,5 +1,6 @@
-use crate::{log, Anim, State};
+use crate::{log, Anim, CalibState, State};
 use communication::{Deserialize, I2cRequestField, I2cRequestOp, Serialize};
+use core::marker::PhantomData;
 use core::task::Poll;
 use pimoroni_servo2040::hal::i2c::peripheral::{I2CEvent, I2CPeripheralEventIterator};
 use pimoroni_servo2040::pac::I2C0;
@@ -21,26 +22,32 @@ macro_rules! on_ready {
     };
 }
 
-pub struct CommsManager {
+pub struct CommsManager<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> {
     i2c_req: Option<I2cRequestOp>,
     buf: [u8; 16],
     written: usize,
     read: usize,
+    phantom_: PhantomData<[[(); NUM_SERVOS_PER_LEG]; NUM_LEGS]>,
 }
 
-impl Default for CommsManager {
+impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> Default
+    for CommsManager<NUM_SERVOS_PER_LEG, NUM_LEGS>
+{
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl CommsManager {
+impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
+    CommsManager<NUM_SERVOS_PER_LEG, NUM_LEGS>
+{
     pub fn new() -> Self {
         Self {
             i2c_req: None,
             buf: [0; 16],
             written: 0,
             read: 0,
+            phantom_: PhantomData,
         }
     }
 
@@ -58,13 +65,18 @@ impl CommsManager {
     {
         self.read += i2c.read(&mut self.buf[self.read..]);
         if self.read == self.buf.len() {
-            Poll::Ready(<T as Deserialize>::deserialize(&mut self.buf[1..]))
+            <T as Deserialize>::deserialize(&mut self.buf[1..])
         } else {
             Poll::Pending
         }
     }
 
-    pub fn process_read_op(&mut self, i2c: &mut I2C, state: &State, op: I2cRequestOp) {
+    pub fn process_read_op(
+        &mut self,
+        i2c: &mut I2C,
+        state: &State<NUM_SERVOS_PER_LEG, NUM_LEGS>,
+        op: I2cRequestOp,
+    ) {
         // Finish consuming the buffer.
         while self.read < self.buf.len() {
             self.read += i2c.read(&mut self.buf[self.read..]);
@@ -83,28 +95,57 @@ impl CommsManager {
                 }
                 I2cRequestField::BodyRotation => self.write(i2c, state.live_state.body_rotation),
                 I2cRequestField::LegRadius => self.write(i2c, state.live_state.leg_radius),
+                I2cRequestField::Calibration { leg, joint, kind } => {
+                    let data = {
+                        state
+                            .live_state
+                            .joints
+                            .map(|j| {
+                                let calib = j[leg as usize][joint as usize].cal();
+                                match kind {
+                                    0 => calib.home_pulse,
+                                    1 => calib.cal.inner().min_pulse(),
+                                    2 => calib.cal.inner().mid_pulse(),
+                                    3 => calib.cal.inner().max_pulse(),
+                                    _ => -1.0,
+                                }
+                            })
+                            .unwrap_or(-1.0)
+                    };
+                    self.write(i2c, data)
+                }
             },
             I2cRequestOp::GetBatteryLevel => self.write(i2c, state.live_state.battery_level),
             _ => log::warn!("unexpected op on read request {}", op),
         }
     }
 
-    pub fn process_write_op(&mut self, i2c: &mut I2C, state: &mut State) -> bool {
+    pub fn process_write_op(
+        &mut self,
+        i2c: &mut I2C,
+        state: &mut State<NUM_SERVOS_PER_LEG, NUM_LEGS>,
+    ) -> Poll<bool> {
         self.read = i2c.read(&mut self.buf);
         match <I2cRequestOp as Deserialize>::deserialize(&self.buf[..self.read]) {
-            Ok(op) => {
+            Poll::Ready(Ok(op)) => {
                 self.i2c_req = Some(op);
                 if self.read > 1 {
-                    return self.process_op(i2c, state, op);
+                    return Poll::Ready(self.process_op(i2c, state, op));
                 }
             }
-            Err(e) => log::warn!("Unable to deserialize data: {:?}", e),
+            Poll::Ready(Err(e)) => log::warn!("Unable to deserialize data: {:?}", e),
+            Poll::Pending => return Poll::Pending,
         }
-        false
+        Poll::Ready(false)
     }
 
     /// Returns true if the state was updated.
-    pub fn process_op(&mut self, i2c: &mut I2C, state: &mut State, op: I2cRequestOp) -> bool {
+    pub fn process_op(
+        &mut self,
+        i2c: &mut I2C,
+        state: &mut State<NUM_SERVOS_PER_LEG, NUM_LEGS>,
+        op: I2cRequestOp,
+    ) -> bool {
         match op {
             I2cRequestOp::Get(_) | I2cRequestOp::GetBatteryLevel => {
                 self.process_read_op(i2c, state, op);
@@ -117,7 +158,12 @@ impl CommsManager {
     }
 
     /// Returns true if the state was updated.
-    pub fn process_write(&mut self, i2c: &mut I2C, state: &mut State, op: I2cRequestOp) -> bool {
+    pub fn process_write(
+        &mut self,
+        i2c: &mut I2C,
+        state: &mut State<NUM_SERVOS_PER_LEG, NUM_LEGS>,
+        op: I2cRequestOp,
+    ) -> bool {
         let mut updated = false;
         match op {
             I2cRequestOp::ChangeState => {
@@ -182,6 +228,29 @@ impl CommsManager {
                         }
                     }
                 }
+                I2cRequestField::Calibration { leg, joint, kind } => {
+                    if let Poll::Ready(res) = self.read(i2c) {
+                        match res {
+                            Ok(v) => {
+                                state.calib_update = Some(CalibState {
+                                    leg: leg as usize,
+                                    joint: joint as usize,
+                                    cal_kind: match kind {
+                                        0 => crate::CalKind::Min,
+                                        1 => crate::CalKind::Mid,
+                                        2 => crate::CalKind::Max,
+                                        3 => crate::CalKind::Home,
+                                        // TODO FIXME
+                                        _ => unreachable!(),
+                                    },
+                                    anim: Anim::new(0.0, v),
+                                });
+                                updated = true;
+                            }
+                            Err(e) => log::warn!("Unable to deserialize data: {:?}", e),
+                        }
+                    }
+                }
             },
             I2cRequestOp::SetBatteryUpdateInterval => {
                 on_ready!(
@@ -197,7 +266,11 @@ impl CommsManager {
         updated
     }
 
-    pub fn run_loop(&mut self, i2c: &mut I2C, state: &mut State) -> bool {
+    pub fn run_loop(
+        &mut self,
+        i2c: &mut I2C,
+        state: &mut State<NUM_SERVOS_PER_LEG, NUM_LEGS>,
+    ) -> bool {
         let mut updated = false;
         while let Some(event) = i2c.next() {
             match event {
@@ -206,12 +279,14 @@ impl CommsManager {
                     Some(op) => self.process_read_op(i2c, state, op),
                     None => log::warn!("missing request on read"),
                 },
-                I2CEvent::TransferWrite => {
-                    updated |= match self.i2c_req {
-                        Some(op) => self.process_op(i2c, state, op),
-                        None => self.process_write_op(i2c, state),
+                I2CEvent::TransferWrite => match self.i2c_req {
+                    Some(op) => updated |= self.process_op(i2c, state, op),
+                    None => {
+                        if let Poll::Ready(u) = self.process_write_op(i2c, state) {
+                            updated |= u;
+                        }
                     }
-                }
+                },
                 I2CEvent::Stop => {
                     self.i2c_req = None;
                     self.written = 0;

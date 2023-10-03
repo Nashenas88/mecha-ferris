@@ -1,6 +1,7 @@
 #![cfg_attr(not(test), no_std)]
 
 use core::convert::Infallible;
+use core::task::Poll;
 use nalgebra::{Quaternion, Translation3, UnitQuaternion, Vector3, Vector4};
 use state::StateMachine;
 
@@ -23,6 +24,8 @@ pub enum I2cRequest {
     GetLegRadius,
     SetBatteryUpdateInterval(u32),
     GetBatteryLevel,
+    SetCalibration(u8, u8, u8, f32),
+    GetCalibration { leg: u8, joint: u8, kind: u8 },
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
@@ -51,6 +54,7 @@ pub enum I2cRequestField {
     BodyTranslation,
     BodyRotation,
     LegRadius,
+    Calibration { leg: u8, joint: u8, kind: u8 },
 }
 
 // Only used for satisfying SgSet.
@@ -143,17 +147,17 @@ impl Serialize for UnitQuaternion<f32> {
 pub trait Deserialize: Sized {
     type Input<'a>;
     type Error;
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error>;
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>>;
 }
 
 impl Deserialize for f32 {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
         let mut byte = [0; 4];
         byte.copy_from_slice(&data[..4]);
-        Ok(f32::from_le_bytes(byte))
+        Poll::Ready(Ok(f32::from_le_bytes(byte)))
     }
 }
 
@@ -161,7 +165,11 @@ impl Deserialize for (f32, f32, f32) {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
+        if data.len() < 3 * core::mem::size_of::<f32>() {
+            return Poll::Pending;
+        }
+
         let mut word = [0; 4];
         word.copy_from_slice(&data[..4]);
         let a = f32::from_le_bytes(word);
@@ -169,7 +177,7 @@ impl Deserialize for (f32, f32, f32) {
         let b = f32::from_le_bytes(word);
         word.copy_from_slice(&data[8..12]);
         let c = f32::from_le_bytes(word);
-        Ok((a, b, c))
+        Poll::Ready(Ok((a, b, c)))
     }
 }
 
@@ -177,7 +185,11 @@ impl Deserialize for (f32, f32, f32, f32) {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
+        if data.len() < 4 * core::mem::size_of::<f32>() {
+            return Poll::Pending;
+        }
+
         let mut word = [0; 4];
         word.copy_from_slice(&data[..4]);
         let a = f32::from_le_bytes(word);
@@ -187,7 +199,7 @@ impl Deserialize for (f32, f32, f32, f32) {
         let c = f32::from_le_bytes(word);
         word.copy_from_slice(&data[12..16]);
         let d = f32::from_le_bytes(word);
-        Ok((a, b, c, d))
+        Poll::Ready(Ok((a, b, c, d)))
     }
 }
 
@@ -195,9 +207,11 @@ impl Deserialize for Vector3<f32> {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
-        let (x, y, z) = <(f32, f32, f32)>::deserialize(data)?;
-        Ok(Vector3::new(x, y, z))
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
+        let Poll::Ready((x, y, z)) = <(f32, f32, f32)>::deserialize(data)? else {
+            return Poll::Pending;
+        };
+        Poll::Ready(Ok(Vector3::new(x, y, z)))
     }
 }
 
@@ -205,9 +219,11 @@ impl Deserialize for Vector4<f32> {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
-        let (x, y, z, w) = <(f32, f32, f32, f32)>::deserialize(data)?;
-        Ok(Vector4::new(x, y, z, w))
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
+        let Poll::Ready((x, y, z, w)) = <(f32, f32, f32, f32)>::deserialize(data)? else {
+            return Poll::Pending;
+        };
+        Poll::Ready(Ok(Vector4::new(x, y, z, w)))
     }
 }
 
@@ -215,9 +231,11 @@ impl Deserialize for Translation3<f32> {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
-        let (x, y, z) = <(f32, f32, f32)>::deserialize(data)?;
-        Ok(Translation3::new(x, y, z))
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
+        let Poll::Ready((x, y, z)) = <(f32, f32, f32)>::deserialize(data)? else {
+            return Poll::Pending;
+        };
+        Poll::Ready(Ok(Translation3::new(x, y, z)))
     }
 }
 
@@ -225,11 +243,13 @@ impl Deserialize for UnitQuaternion<f32> {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
-        let (i, j, k, w) = <(f32, f32, f32, f32)>::deserialize(data)?;
-        Ok(UnitQuaternion::new_unchecked(Quaternion::from_vector(
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
+        let Poll::Ready((i, j, k, w)) = <(f32, f32, f32, f32)>::deserialize(data)? else {
+            return Poll::Pending;
+        };
+        Poll::Ready(Ok(UnitQuaternion::new_unchecked(Quaternion::from_vector(
             Vector4::new(i, j, k, w),
-        )))
+        ))))
     }
 }
 
@@ -237,10 +257,14 @@ impl Deserialize for u32 {
     type Input<'a> = &'a [u8];
     type Error = Infallible;
 
-    fn deserialize(data: Self::Input<'_>) -> Result<Self, Self::Error> {
+    fn deserialize(data: Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
+        if data.len() < core::mem::size_of::<u32>() {
+            return Poll::Pending;
+        }
+
         let mut byte = [0; 4];
         byte.copy_from_slice(&data[..4]);
-        Ok(u32::from_le_bytes(byte))
+        Poll::Ready(Ok(u32::from_le_bytes(byte)))
     }
 }
 
@@ -260,15 +284,15 @@ impl Serialize for StateMachine {
 impl Deserialize for StateMachine {
     type Input<'a> = &'a [u8];
     type Error = DeErr;
-    fn deserialize(data: &[u8]) -> Result<Self, DeErr> {
-        Ok(match data[0] {
+    fn deserialize(data: &[u8]) -> Poll<Result<Self, DeErr>> {
+        Poll::Ready(Ok(match data[0] {
             0 => StateMachine::Paused,
             1 => StateMachine::Homing,
             2 => StateMachine::Calibrating,
             3 => StateMachine::Looping,
             4 => StateMachine::Exploring,
-            _ => return Err(DeErr::BadByte(data[0])),
-        })
+            _ => return Poll::Ready(Err(DeErr::BadByte(data[0]))),
+        }))
     }
 }
 
@@ -339,6 +363,16 @@ impl Serialize for I2cRequest {
                 5
             }
             I2cRequest::GetBatteryLevel => I2cRequestOp::GetBatteryLevel.serialize(buf),
+            I2cRequest::SetCalibration(leg, joint, kind, pulse) => {
+                let size = I2cRequestOp::Set(I2cRequestField::Calibration { leg, joint, kind })
+                    .serialize(&mut buf[0..4]);
+                buf[4..8].copy_from_slice(&pulse.to_le_bytes());
+                size + 4
+            }
+            I2cRequest::GetCalibration { leg, joint, kind } => {
+                I2cRequestOp::Get(I2cRequestField::Calibration { leg, joint, kind })
+                    .serialize(&mut buf[0..4])
+            }
         }
     }
 }
@@ -347,11 +381,15 @@ impl Deserialize for I2cRequest {
     type Input<'a> = (I2cRequestOp, &'a [u8]);
     type Error = DeErr;
 
-    fn deserialize((op, data): Self::Input<'_>) -> Result<Self, Self::Error> {
+    fn deserialize((op, data): Self::Input<'_>) -> Poll<Result<Self, Self::Error>> {
         let mut buf = [0; 4];
-        Ok(match op {
+        Poll::Ready(Ok(match op {
             I2cRequestOp::ChangeState => {
-                I2cRequest::ChangeState(<StateMachine as Deserialize>::deserialize(&data[1..])?)
+                let Poll::Ready(state) = <StateMachine as Deserialize>::deserialize(&data[1..])?
+                else {
+                    return Poll::Pending;
+                };
+                I2cRequest::ChangeState(state)
             }
             I2cRequestOp::Set(I2cRequestField::AnimationFactor) => {
                 buf.copy_from_slice(&data[1..5]);
@@ -403,12 +441,21 @@ impl Deserialize for I2cRequest {
             }
             I2cRequestOp::Get(I2cRequestField::LegRadius) => I2cRequest::GetLegRadius,
             I2cRequestOp::GetBatteryLevel => I2cRequest::GetBatteryLevel,
-        })
+            I2cRequestOp::Set(I2cRequestField::Calibration { leg, joint, kind }) => {
+                buf.copy_from_slice(&data[4..8]);
+                let pulse = f32::from_le_bytes(buf);
+                I2cRequest::SetCalibration(leg, joint, kind, pulse)
+            }
+            I2cRequestOp::Get(I2cRequestField::Calibration { leg, joint, kind }) => {
+                I2cRequest::GetCalibration { leg, joint, kind }
+            }
+        }))
     }
 }
 
 impl Serialize for I2cRequestOp {
     fn serialize(self, buffer: &mut [u8]) -> usize {
+        let mut size = 1;
         buffer[0] = match self {
             I2cRequestOp::ChangeState => 0,
             I2cRequestOp::Set(I2cRequestField::AnimationFactor) => 1,
@@ -425,8 +472,22 @@ impl Serialize for I2cRequestOp {
             I2cRequestOp::Get(I2cRequestField::LegRadius) => 12,
             I2cRequestOp::SetBatteryUpdateInterval => 13,
             I2cRequestOp::GetBatteryLevel => 14,
+            I2cRequestOp::Set(I2cRequestField::Calibration { leg, joint, kind }) => {
+                buffer[1] = leg;
+                buffer[2] = joint;
+                buffer[3] = kind;
+                size = 4;
+                15
+            }
+            I2cRequestOp::Get(I2cRequestField::Calibration { leg, joint, kind }) => {
+                buffer[1] = leg;
+                buffer[2] = joint;
+                buffer[3] = kind;
+                size = 4;
+                16
+            }
         };
-        1
+        size
     }
 }
 
@@ -434,8 +495,8 @@ impl Deserialize for I2cRequestOp {
     type Input<'a> = &'a [u8];
     type Error = DeErr;
 
-    fn deserialize(data: &[u8]) -> Result<Self, Self::Error> {
-        Ok(match data[0] {
+    fn deserialize(data: &[u8]) -> Poll<Result<Self, Self::Error>> {
+        Poll::Ready(Ok(match data[0] {
             0 => I2cRequestOp::ChangeState,
             1 => I2cRequestOp::Set(I2cRequestField::AnimationFactor),
             2 => I2cRequestOp::Get(I2cRequestField::AnimationFactor),
@@ -451,8 +512,28 @@ impl Deserialize for I2cRequestOp {
             12 => I2cRequestOp::Get(I2cRequestField::LegRadius),
             13 => I2cRequestOp::SetBatteryUpdateInterval,
             14 => I2cRequestOp::GetBatteryLevel,
-            _ => return Err(DeErr::BadByte(data[0])),
-        })
+            15 => {
+                if data.len() < 4 {
+                    return Poll::Pending;
+                }
+                I2cRequestOp::Set(I2cRequestField::Calibration {
+                    leg: data[1],
+                    joint: data[2],
+                    kind: data[3],
+                })
+            }
+            16 => {
+                if data.len() < 4 {
+                    return Poll::Pending;
+                }
+                I2cRequestOp::Get(I2cRequestField::Calibration {
+                    leg: data[1],
+                    joint: data[2],
+                    kind: data[3],
+                })
+            }
+            _ => return Poll::Ready(Err(DeErr::BadByte(data[0]))),
+        }))
     }
 }
 

@@ -9,7 +9,6 @@ use mecha_ferris::comms::CommsManager;
 use mecha_ferris::debouncer::Debouncer;
 use mecha_ferris::joint::Joint;
 use mecha_ferris::{log, State};
-use state::RobotState;
 
 use core::iter::once;
 #[cfg(feature = "defmt")]
@@ -49,6 +48,8 @@ const NUM_SERVOS_PER_LEG: usize = 3;
 const NUM_LEGS: usize = 6;
 const NUM_SERVOS: usize = NUM_SERVOS_PER_LEG * NUM_LEGS;
 const NUM_CHANNELS: usize = 2;
+
+type RobotState = state::RobotState<Joint, NUM_SERVOS_PER_LEG, NUM_LEGS>;
 
 static mut STATE1: Option<GlobalState<CH0, CH1, PIO0, SM0>> = {
     const NONE_HACK: Option<GlobalState<CH0, CH1, PIO0, SM0>> = None;
@@ -287,7 +288,8 @@ fn main() -> ! {
         [servo13, servo14, servo15],
         [servo16, servo17, servo18],
     ];
-    let mut joints = make_joints(servos1, calibrations);
+    let calibrating_calibrations = calibrating_calibrations();
+    let mut joints = make_joints(servos1, calibrations, calibrating_calibrations);
 
     count_down.start(1.secs());
     let _ = nb::block!(count_down.wait());
@@ -382,7 +384,7 @@ fn main() -> ! {
             state::StateMachine::Calibrating => {
                 // last_update = now;
                 // true
-                let _ = calibrating_calibrations();
+                state.update(diff as f32, &mut servo_cluster, &mut joints);
                 false
             }
             state::StateMachine::Looping | state::StateMachine::Exploring => {
@@ -410,11 +412,7 @@ fn main() -> ! {
                         .map(|e| if e { red() } else { green() }),
                     LED_BRIGHTNESS,
                 ));
-                state.update::<NUM_LEGS, NUM_SERVOS_PER_LEG>(
-                    diff as f32,
-                    &mut servo_cluster,
-                    &mut joints,
-                );
+                state.update(diff as f32, &mut servo_cluster, &mut joints);
                 true
             }
         };

@@ -1,20 +1,43 @@
-use crate::{consts::*, log};
+use crate::services::{CalibrationDatum, SetRes, SetResult};
+use crate::{consts::*, log, RobotState};
 use communication::{I2cRequest, I2cRequestField, I2cRequestOp};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Sender;
 use nalgebra::{Translation3, UnitQuaternion, Vector3};
 use scapegoat::SgSet;
-use state::{RobotState, StateMachine};
+use state::StateMachine;
 
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub(crate) enum CommandErr {
     InvalidFloat,
+    InvalidIndex,
 }
 
 #[derive(Copy, Clone)]
 pub(crate) enum SyncKind {
     OnlyCommands,
     AllState,
+}
+
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub(crate) struct CalibrationIndex {
+    pub(crate) leg: u8,
+    pub(crate) joint: u8,
+    pub(crate) kind: u8,
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for Command {
+    fn format(&self, f: defmt::Formatter) {
+        defmt::write!(
+            f,
+            "CalibrationIndex {{ leg: {}, joint: {}, kind: {} }}",
+            self.leg,
+            self.joint,
+            self.kind
+        );
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -28,6 +51,89 @@ pub(crate) enum Command {
     SetAngularVelocity(f32),
     SetLegRadius(f32),
     SetBatteryUpdateInterval(u32),
+    GetCalibrationFor(CalibrationIndex),
+    SetCalibrationDatum(f32, CalibrationIndex),
+}
+
+#[derive(Copy, Clone)]
+pub(crate) enum CommandResult {
+    Sync(u8),
+    ChangeState(StateMachine),
+    SetAnimationFactor(f32),
+    SetBodyTranslation(Translation3<f32>),
+    SetBodyRotation(UnitQuaternion<f32>),
+    SetMotionVector(Vector3<f32>),
+    SetAngularVelocity(f32),
+    SetLegRadius(f32),
+    SetBatteryUpdateInterval(u32),
+    GetCalibrationFor(CalibrationDatum),
+    SetCalibrationDatum(SetResult),
+}
+
+impl Command {
+    pub(crate) fn to_result(
+        self,
+        robot_state: &RobotState,
+        result: Result<(), CommandErr>,
+    ) -> CommandResult {
+        match (self, result) {
+            (Command::Sync(_), _) => CommandResult::Sync(robot_state.battery_level as u8),
+            (Command::ChangeState(_), _) => CommandResult::ChangeState(robot_state.state_machine),
+            (Command::SetAnimationFactor(_), _) => {
+                CommandResult::SetAnimationFactor(robot_state.animation_factor)
+            }
+            (Command::SetBodyTranslation(_), _) => {
+                CommandResult::SetBodyTranslation(robot_state.body_translation)
+            }
+            (Command::SetBodyRotation(_), _) => {
+                CommandResult::SetBodyRotation(robot_state.body_rotation)
+            }
+            (Command::SetMotionVector(_), _) => {
+                CommandResult::SetMotionVector(robot_state.motion_vector)
+            }
+            (Command::SetAngularVelocity(_), _) => {
+                CommandResult::SetAngularVelocity(robot_state.angular_velocity)
+            }
+            (Command::SetLegRadius(_), _) => CommandResult::SetLegRadius(robot_state.leg_radius),
+            (Command::SetBatteryUpdateInterval(_), _) => {
+                CommandResult::SetBatteryUpdateInterval(robot_state.battery_update_interval_ms)
+            }
+            (Command::GetCalibrationFor(index), Ok(())) => {
+                let cal = robot_state
+                    .joint(index.leg as usize, index.joint as usize)
+                    .and_then(|joint| joint.cal.get(index.kind as usize))
+                    .map(|cal| cal.pulse_ms)
+                    // Unwrap ok because we're in the Ok arm.
+                    .unwrap();
+                CommandResult::GetCalibrationFor(CalibrationDatum::new(cal, index))
+            }
+            (Command::GetCalibrationFor(index), Err(e)) => {
+                log::error!("Error getting calibration for {:?}: {:?}", index, e);
+                let cal = robot_state
+                    .joint(index.leg as usize, index.joint as usize)
+                    .and_then(|joint| joint.cal.get(index.kind as usize))
+                    .map(|cal| cal.pulse_ms)
+                    // Unwrap ok because we're in the Ok arm.
+                    .unwrap();
+                CommandResult::GetCalibrationFor(CalibrationDatum::new(cal, index))
+            }
+            (Command::SetCalibrationDatum(_, index), Ok(())) => {
+                CommandResult::SetCalibrationDatum(SetResult {
+                    index,
+                    result: SetRes::Ok,
+                })
+            }
+            (Command::SetCalibrationDatum(_, index), Err(e)) => {
+                CommandResult::SetCalibrationDatum(SetResult {
+                    index,
+                    result: match e {
+                        CommandErr::InvalidFloat => SetRes::InvalidValue,
+                        CommandErr::InvalidIndex => SetRes::InvalidIndex,
+                    },
+                })
+            }
+        }
+    }
 }
 
 #[cfg(feature = "defmt")]
@@ -60,6 +166,10 @@ impl defmt::Format for Command {
             Command::SetBatteryUpdateInterval(i) => {
                 defmt::write!(f, "SetBatteryUpdateInterval({})", i)
             }
+            Command::GetCalibrationFor(index) => defmt::write!(f, "GetCalibrationFor({})", index),
+            Command::SetCalibrationDatum(pulse, index) => {
+                defmt::write!(f, "SetCalibrationDatum({}, {})", pulse, index)
+            }
         }
     }
 }
@@ -90,6 +200,8 @@ pub(crate) struct CommandUpdate {
     pub(crate) angular_velocity: Option<UpdateKind>,
     pub(crate) leg_radius: Option<UpdateKind>,
     pub(crate) battery_interval: Option<UpdateKind>,
+    pub(crate) get_calibration_result: Option<UpdateKind>,
+    pub(crate) set_calibration_result: Option<UpdateKind>,
 }
 
 impl CommandUpdate {
@@ -103,20 +215,24 @@ impl CommandUpdate {
             angular_velocity: None,
             leg_radius: None,
             battery_interval: None,
+            get_calibration_result: None,
+            set_calibration_result: None,
         }
     }
 
-    pub(crate) fn get(&self, command: Command) -> Option<UpdateKind> {
+    pub(crate) fn get(&self, command: CommandResult) -> Option<UpdateKind> {
         match command {
-            Command::Sync(_) => None,
-            Command::ChangeState(_) => self.state,
-            Command::SetAnimationFactor(_) => self.animation_factor,
-            Command::SetBodyTranslation(_) => self.body_translation,
-            Command::SetBodyRotation(_) => self.body_rotation,
-            Command::SetMotionVector(_) => self.motion_vector,
-            Command::SetAngularVelocity(_) => self.angular_velocity,
-            Command::SetLegRadius(_) => self.leg_radius,
-            Command::SetBatteryUpdateInterval(_) => self.battery_interval,
+            CommandResult::Sync(_) => None,
+            CommandResult::ChangeState(_) => self.state,
+            CommandResult::SetAnimationFactor(_) => self.animation_factor,
+            CommandResult::SetBodyTranslation(_) => self.body_translation,
+            CommandResult::SetBodyRotation(_) => self.body_rotation,
+            CommandResult::SetMotionVector(_) => self.motion_vector,
+            CommandResult::SetAngularVelocity(_) => self.angular_velocity,
+            CommandResult::SetLegRadius(_) => self.leg_radius,
+            CommandResult::SetBatteryUpdateInterval(_) => self.battery_interval,
+            CommandResult::GetCalibrationFor(_) => self.get_calibration_result,
+            CommandResult::SetCalibrationDatum(_) => self.set_calibration_result,
         }
     }
 }
@@ -288,61 +404,96 @@ pub(crate) async fn handle_command(
                 }
             }
         }
+        Command::GetCalibrationFor(index) => {
+            if robot_state
+                .joint(index.leg as usize, index.joint as usize)
+                .and_then(|j| j.cal.get(index.kind as usize))
+                .is_none()
+            {
+                return Err(CommandErr::InvalidIndex);
+            }
+            let _ = state_manager.should_update.insert(I2cRequestOp::Get(
+                I2cRequestField::Calibration {
+                    leg: index.leg,
+                    joint: index.joint,
+                    kind: index.kind,
+                },
+            ));
+        }
+        Command::SetCalibrationDatum(pulse, index) => {
+            let Some(cal) = robot_state
+                .joint_mut(index.leg as usize, index.joint as usize)
+                .and_then(|j| j.cal.get_mut(index.kind as usize))
+            else {
+                return Err(CommandErr::InvalidIndex);
+            };
+            cal.pulse_ms = pulse;
+            let _ = state_manager.should_update.insert(I2cRequestOp::Set(
+                I2cRequestField::Calibration {
+                    leg: index.leg,
+                    joint: index.joint,
+                    kind: index.kind,
+                },
+            ));
+        }
     }
 
     Ok(())
 }
 
 async fn send_op(
-    robot_state: &mut RobotState,
+    robot_state: &RobotState,
     sender: &Sender<'static, CriticalSectionRawMutex, I2cRequest, 1>,
     op: I2cRequestOp,
 ) {
     let i2c_message = match op {
-        I2cRequestOp::ChangeState => I2cRequest::ChangeState(robot_state.state_machine),
+        I2cRequestOp::ChangeState => Some(I2cRequest::ChangeState(robot_state.state_machine)),
         I2cRequestOp::Set(field) => match field {
             I2cRequestField::AnimationFactor => {
-                I2cRequest::SetAnimationFactor(robot_state.animation_factor)
+                Some(I2cRequest::SetAnimationFactor(robot_state.animation_factor))
             }
             I2cRequestField::AngularVelocity => {
-                I2cRequest::SetAngularVelocity(robot_state.angular_velocity)
+                Some(I2cRequest::SetAngularVelocity(robot_state.angular_velocity))
             }
-            I2cRequestField::MotionVector => I2cRequest::SetMotionVector(
+            I2cRequestField::MotionVector => Some(I2cRequest::SetMotionVector(
                 robot_state.motion_vector.x,
                 robot_state.motion_vector.y,
                 robot_state.motion_vector.z,
-            ),
-            I2cRequestField::BodyTranslation => {
-                log::info!(
-                    "Sending body translation (x:{}, y:{}, z:{})",
-                    robot_state.body_translation.x,
-                    robot_state.body_translation.y,
-                    robot_state.body_translation.z,
-                );
-                I2cRequest::SetBodyTranslation(
-                    robot_state.body_translation.x,
-                    robot_state.body_translation.y,
-                    robot_state.body_translation.z,
-                )
-            }
+            )),
+            I2cRequestField::BodyTranslation => Some(I2cRequest::SetBodyTranslation(
+                robot_state.body_translation.x,
+                robot_state.body_translation.y,
+                robot_state.body_translation.z,
+            )),
             I2cRequestField::BodyRotation => {
                 let (r, p, y) = robot_state.body_rotation.euler_angles();
-                I2cRequest::SetBodyRotation(r, p, y)
+                Some(I2cRequest::SetBodyRotation(r, p, y))
             }
-            I2cRequestField::LegRadius => I2cRequest::SetLegRadius(robot_state.leg_radius),
+            I2cRequestField::LegRadius => Some(I2cRequest::SetLegRadius(robot_state.leg_radius)),
+            I2cRequestField::Calibration { leg, joint, kind } => robot_state
+                .joints
+                .and_then(|j| j.get(leg as usize).copied())
+                .and_then(|l| l.get(joint as usize).copied())
+                .and_then(|j| j.cal.get(kind as usize).copied())
+                .map(|c| I2cRequest::SetCalibration(leg, joint, kind, c.pulse_ms)),
         },
-        I2cRequestOp::SetBatteryUpdateInterval => {
-            I2cRequest::SetBatteryUpdateInterval(robot_state.battery_update_interval_ms)
-        }
-        I2cRequestOp::Get(field) => match field {
+        I2cRequestOp::SetBatteryUpdateInterval => Some(I2cRequest::SetBatteryUpdateInterval(
+            robot_state.battery_update_interval_ms,
+        )),
+        I2cRequestOp::Get(field) => Some(match field {
             I2cRequestField::AnimationFactor => I2cRequest::GetAnimationFactor,
             I2cRequestField::AngularVelocity => I2cRequest::GetAngularVelocity,
             I2cRequestField::MotionVector => I2cRequest::GetMotionVector,
             I2cRequestField::BodyTranslation => I2cRequest::GetBodyTranslation,
             I2cRequestField::BodyRotation => I2cRequest::GetBodyRotation,
             I2cRequestField::LegRadius => I2cRequest::GetLegRadius,
-        },
-        I2cRequestOp::GetBatteryLevel => I2cRequest::GetBatteryLevel,
+            I2cRequestField::Calibration { leg, joint, kind } => {
+                I2cRequest::GetCalibration { leg, joint, kind }
+            }
+        }),
+        I2cRequestOp::GetBatteryLevel => Some(I2cRequest::GetBatteryLevel),
     };
-    sender.send(i2c_message).await;
+    if let Some(i2c_message) = i2c_message {
+        sender.send(i2c_message).await;
+    }
 }

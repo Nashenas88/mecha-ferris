@@ -21,12 +21,14 @@ use nrf_softdevice::ble::{peripheral, Connection};
 use nrf_softdevice::{raw, Softdevice};
 use panic_probe as _;
 use server::Server;
-use state::RobotState;
+use state::JointDto;
 use static_cell::StaticCell;
 
 use crate::services::{
     BatteryService, BatteryServiceEvent, ControllerService, ControllerServiceEvent,
 };
+
+pub(crate) type RobotState = state::RobotState<JointDto, NUM_SERVOS_PER_LEG, NUM_LEGS>;
 
 mod command;
 mod consts;
@@ -34,6 +36,9 @@ mod log;
 mod server;
 mod services;
 mod wrappers;
+
+pub(crate) const NUM_SERVOS_PER_LEG: usize = 3;
+pub(crate) const NUM_LEGS: usize = 6;
 
 #[embassy_executor::task]
 async fn softdevice_task(sd: &'static Softdevice) -> ! {
@@ -47,7 +52,7 @@ async fn robot_comm(
 ) {
     let mut buffer = [0; 16];
     loop {
-        let i2c_message = rx.recv().await;
+        let i2c_message = rx.receive().await;
         let written = i2c_message.serialize(&mut buffer);
         buffer[written..].fill(0);
         if let Err(e) = i2c.write(COMMS_ADDR as u8, &buffer).await {

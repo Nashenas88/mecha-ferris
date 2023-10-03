@@ -230,37 +230,110 @@ pub fn calibrations() -> [[CalData; NUM_SERVOS_PER_LEG]; NUM_LEGS] {
 pub fn make_joints(
     servos: [[ServoIdx; NUM_SERVOS_PER_LEG]; NUM_LEGS],
     calibrations: [[CalData; NUM_SERVOS_PER_LEG]; NUM_LEGS],
+    calibrating_calibrations: [[CalData; NUM_SERVOS_PER_LEG]; NUM_LEGS],
 ) -> [[Joint; NUM_SERVOS_PER_LEG]; NUM_LEGS] {
     [
         [
-            Joint::new(servos[0][0], calibrations[0][0]),
-            Joint::new(servos[0][1], calibrations[0][1]),
-            Joint::new(servos[0][2], calibrations[0][2]),
+            Joint::new(
+                servos[0][0],
+                calibrations[0][0],
+                calibrating_calibrations[0][0],
+            ),
+            Joint::new(
+                servos[0][1],
+                calibrations[0][1],
+                calibrating_calibrations[0][1],
+            ),
+            Joint::new(
+                servos[0][2],
+                calibrations[0][2],
+                calibrating_calibrations[0][2],
+            ),
         ],
         [
-            Joint::new(servos[1][0], calibrations[1][0]),
-            Joint::new(servos[1][1], calibrations[1][1]),
-            Joint::new(servos[1][2], calibrations[1][2]),
+            Joint::new(
+                servos[1][0],
+                calibrations[1][0],
+                calibrating_calibrations[1][0],
+            ),
+            Joint::new(
+                servos[1][1],
+                calibrations[1][1],
+                calibrating_calibrations[1][1],
+            ),
+            Joint::new(
+                servos[1][2],
+                calibrations[1][2],
+                calibrating_calibrations[1][2],
+            ),
         ],
         [
-            Joint::new(servos[2][0], calibrations[2][0]),
-            Joint::new(servos[2][1], calibrations[2][1]),
-            Joint::new(servos[2][2], calibrations[2][2]),
+            Joint::new(
+                servos[2][0],
+                calibrations[2][0],
+                calibrating_calibrations[2][0],
+            ),
+            Joint::new(
+                servos[2][1],
+                calibrations[2][1],
+                calibrating_calibrations[2][1],
+            ),
+            Joint::new(
+                servos[2][2],
+                calibrations[2][2],
+                calibrating_calibrations[2][2],
+            ),
         ],
         [
-            Joint::new(servos[3][0], calibrations[3][0]),
-            Joint::new(servos[3][1], calibrations[3][1]),
-            Joint::new(servos[3][2], calibrations[3][2]),
+            Joint::new(
+                servos[3][0],
+                calibrations[3][0],
+                calibrating_calibrations[3][0],
+            ),
+            Joint::new(
+                servos[3][1],
+                calibrations[3][1],
+                calibrating_calibrations[3][1],
+            ),
+            Joint::new(
+                servos[3][2],
+                calibrations[3][2],
+                calibrating_calibrations[3][2],
+            ),
         ],
         [
-            Joint::new(servos[4][0], calibrations[4][0]),
-            Joint::new(servos[4][1], calibrations[4][1]),
-            Joint::new(servos[4][2], calibrations[4][2]),
+            Joint::new(
+                servos[4][0],
+                calibrations[4][0],
+                calibrating_calibrations[4][0],
+            ),
+            Joint::new(
+                servos[4][1],
+                calibrations[4][1],
+                calibrating_calibrations[4][1],
+            ),
+            Joint::new(
+                servos[4][2],
+                calibrations[4][2],
+                calibrating_calibrations[4][2],
+            ),
         ],
         [
-            Joint::new(servos[5][0], calibrations[5][0]),
-            Joint::new(servos[5][1], calibrations[5][1]),
-            Joint::new(servos[5][2], calibrations[5][2]),
+            Joint::new(
+                servos[5][0],
+                calibrations[5][0],
+                calibrating_calibrations[5][0],
+            ),
+            Joint::new(
+                servos[5][1],
+                calibrations[5][1],
+                calibrating_calibrations[5][1],
+            ),
+            Joint::new(
+                servos[5][2],
+                calibrations[5][2],
+                calibrating_calibrations[5][2],
+            ),
         ],
     ]
 }

@@ -34,16 +34,16 @@ pub struct CalibState {
     pub anim: Anim<f32, Bezier, DEFAULT_ANIM_TIME>,
 }
 
-pub struct State {
-    pub live_state: RobotState,
+pub struct State<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> {
+    pub live_state: RobotState<Joint, NUM_SERVOS_PER_LEG, NUM_LEGS>,
     pub translation_anim: Option<Anim<Translation3<f32>, Bezier, DEFAULT_ANIM_TIME>>,
     pub rotation_anim: Option<Anim<UnitQuaternion<f32>, Bezier, DEFAULT_ANIM_TIME>>,
     pub leg_radius_anim: Option<Anim<f32, Bezier, DEFAULT_ANIM_TIME>>,
     pub calib_update: Option<CalibState>,
 }
 
-impl State {
-    pub fn new(robot_state: RobotState) -> Self {
+impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> State<NUM_SERVOS_PER_LEG, NUM_LEGS> {
+    pub fn new(robot_state: RobotState<Joint, NUM_SERVOS_PER_LEG, NUM_LEGS>) -> Self {
         Self {
             live_state: robot_state,
             translation_anim: None,
@@ -53,7 +53,7 @@ impl State {
         }
     }
 
-    pub fn update<const NUM_LEGS: usize, const NUM_SERVOS_PER_LEG: usize>(
+    pub fn update(
         &mut self,
         delta: f32,
         servo_cluster: &mut ServoCluster<{ NUM_SERVOS as usize }, PIO0, SM0, AngularCalibration>,
@@ -79,26 +79,23 @@ impl State {
         }
         if let Some(ref mut cal_update) = self.calib_update {
             let joint = &mut joints[cal_update.leg][cal_update.joint];
-            let servo_calibration = servo_cluster.calibration_mut(joint.servo()).inner_mut();
             let calibration = joint.cal_mut();
             let pulse = cal_update.anim.proceed(delta);
             match cal_update.cal_kind {
                 CalKind::Min => {
                     calibration.cal.inner_mut().set_min_pulse(pulse);
-                    servo_calibration.set_min_pulse(pulse);
                 }
                 CalKind::Mid => {
                     calibration.cal.inner_mut().set_mid_pulse(pulse);
-                    servo_calibration.set_mid_pulse(pulse);
                 }
                 CalKind::Max => {
                     calibration.cal.inner_mut().set_max_pulse(pulse);
-                    servo_calibration.set_max_pulse(pulse);
                 }
                 CalKind::Home => {
                     calibration.home_pulse = pulse;
                 }
             }
+            *servo_cluster.calibration_mut(joint.servo()) = joint.calibrating_cal().cal;
             servo_cluster.set_pulse(joint.servo(), pulse, true);
             if cal_update.anim.finished() {
                 self.calib_update = None;

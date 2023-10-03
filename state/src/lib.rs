@@ -1,8 +1,40 @@
 #![no_std]
+#![feature(const_trait_impl)]
 
 pub use nalgebra::{Quaternion, Translation3, Unit, UnitQuaternion, Vector3};
 
-pub struct RobotState {
+#[derive(Copy, Clone)]
+pub struct JointDto {
+    pub servo_idx: u8,
+    pub cal: [CalibrationDto; 4],
+}
+
+#[derive(Copy, Clone)]
+pub struct CalibrationDto {
+    pub kind: CalibrationKind,
+    pub pulse_ms: f32,
+}
+
+#[derive(Copy, Clone)]
+pub enum CalibrationKind {
+    Home,
+    Mid,
+    Min,
+    Max,
+}
+
+impl CalibrationKind {
+    pub fn to_u8(self) -> u8 {
+        match self {
+            Self::Home => 0,
+            Self::Mid => 1,
+            Self::Min => 2,
+            Self::Max => 3,
+        }
+    }
+}
+
+pub struct RobotState<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> {
     /// Track the current state of the robot.
     pub state_machine: StateMachine,
     /// Multiplied by the default duration of the animation. 1.0 is normal speed, 0.5 is half speed,
@@ -22,9 +54,13 @@ pub struct RobotState {
     pub battery_level: u32,
     /// How often to send battery updates to the host.
     pub battery_update_interval_ms: u32,
+    /// Joint details,
+    pub joints: Option<[[J; NUM_SERVOS_PER_LEG]; NUM_LEGS]>,
 }
 
-impl RobotState {
+impl<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
+    RobotState<J, NUM_SERVOS_PER_LEG, NUM_LEGS>
+{
     pub const fn new() -> Self {
         Self {
             state_machine: StateMachine::Paused,
@@ -38,11 +74,22 @@ impl RobotState {
             leg_radius: 0.0,
             battery_level: 0,
             battery_update_interval_ms: 0,
+            joints: None,
         }
+    }
+
+    pub fn joint(&self, leg: usize, joint: usize) -> Option<&J> {
+        self.joints.as_ref()?.get(leg)?.get(joint)
+    }
+
+    pub fn joint_mut(&mut self, leg: usize, joint: usize) -> Option<&mut J> {
+        self.joints.as_mut()?.get_mut(leg)?.get_mut(joint)
     }
 }
 
-impl Default for RobotState {
+impl<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> Default
+    for RobotState<J, NUM_SERVOS_PER_LEG, NUM_LEGS>
+{
     fn default() -> Self {
         Self::new()
     }
