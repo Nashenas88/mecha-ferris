@@ -1,5 +1,5 @@
-use crate::services::{CalibrationDatum, SetRes, SetResult};
 use crate::{consts::*, log, RobotState};
+use bluetooth_comms::{CalibrationDatum, CalibrationIndex, SetRes, SetResult};
 use communication::{I2cRequest, I2cRequestField, I2cRequestOp};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Sender;
@@ -17,14 +17,6 @@ pub(crate) enum CommandErr {
 pub(crate) enum SyncKind {
     OnlyCommands,
     AllState,
-}
-
-#[derive(Copy, Clone)]
-#[repr(C)]
-pub(crate) struct CalibrationIndex {
-    pub(crate) leg: u8,
-    pub(crate) joint: u8,
-    pub(crate) kind: u8,
 }
 
 #[cfg(feature = "defmt")]

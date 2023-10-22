@@ -19,6 +19,7 @@ communication = { path = "../communication" }
 nalgebra = { version = "0.32.2", default-features = false }
 scapegoat = "2.3.0"
 static_cell = "1.0.0"
+bluetooth-comms = { path = "../bluetooth-comms" }
 
 
 [features]

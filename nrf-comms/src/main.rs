@@ -2,6 +2,7 @@
 #![no_main]
 #![feature(type_alias_impl_trait)]
 
+use bluetooth_comms::log;
 use command::{Command, CommandUpdate, StateManager};
 use communication::{I2cRequest, Serialize, COMMS_ADDR};
 use core::cell::RefCell;
@@ -32,10 +33,8 @@ pub(crate) type RobotState = state::RobotState<JointDto, NUM_SERVOS_PER_LEG, NUM
 
 mod command;
 mod consts;
-mod log;
 mod server;
 mod services;
-mod wrappers;
 
 pub(crate) const NUM_SERVOS_PER_LEG: usize = 3;
 pub(crate) const NUM_LEGS: usize = 6;

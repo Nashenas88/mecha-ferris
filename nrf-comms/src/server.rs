@@ -1,15 +1,14 @@
 use core::cell::RefCell;
 
-use crate::command::{
-    handle_command, CalibrationIndex, CommandUpdate, StateManager, SyncKind, UpdateKind,
-};
+use crate::command::{handle_command, CommandUpdate, StateManager, SyncKind, UpdateKind};
 use crate::log;
-use crate::services::{update, CalibrationDatum, SetRes, SetResult, UpdateError};
-use crate::wrappers::{Translation, UQuaternion, Vector, F32, SM};
+use crate::services::{update, UpdateError, Wrapper};
 use crate::{
     BatteryService, BatteryServiceEvent, Command, ControllerService, ControllerServiceEvent,
     ROBOT_STATE,
 };
+use bluetooth_comms::wrappers::{Translation, UQuaternion, Vector, F32, SM};
+use bluetooth_comms::{CalibrationDatum, CalibrationIndex, SetRes, SetResult};
 use communication::I2cRequest;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -35,50 +34,59 @@ impl Server {
         server.controller.sync_set(&false).unwrap();
         server
             .controller
-            .state_set(&SM(StateMachine::Paused))
-            .unwrap();
-        server.controller.animation_factor_set(&F32(1.0)).unwrap();
-        server.controller.angular_velocity_set(&F32(0.0)).unwrap();
-        server
-            .controller
-            .motion_vector_set(&Vector(Vector3::new(0.0, 0.0, 0.0)))
+            .state_set(&Wrapper(SM(StateMachine::Paused)))
             .unwrap();
         server
             .controller
-            .body_translation_set(&Translation(Translation3::new(0.0, 0.0, 0.0)))
+            .animation_factor_set(&Wrapper(F32(1.0)))
             .unwrap();
         server
             .controller
-            .body_rotation_set(&UQuaternion(UnitQuaternion::from_euler_angles(
+            .angular_velocity_set(&Wrapper(F32(0.0)))
+            .unwrap();
+        server
+            .controller
+            .motion_vector_set(&Wrapper(Vector(Vector3::new(0.0, 0.0, 0.0))))
+            .unwrap();
+        server
+            .controller
+            .body_translation_set(&Wrapper(Translation(Translation3::new(0.0, 0.0, 0.0))))
+            .unwrap();
+        server
+            .controller
+            .body_rotation_set(&Wrapper(UQuaternion(UnitQuaternion::from_euler_angles(
                 0.0, 0.0, 0.0,
-            )))
+            ))))
             .unwrap();
-        server.controller.leg_radius_set(&F32(0.0)).unwrap();
+        server
+            .controller
+            .leg_radius_set(&Wrapper(F32(0.0)))
+            .unwrap();
         server
             .controller
             .battery_update_interval_ms_set(&0)
             .unwrap();
         server
             .controller
-            .get_calibration_result_set(&CalibrationDatum::new(
+            .get_calibration_result_set(&Wrapper(CalibrationDatum::new(
                 0.0,
                 CalibrationIndex {
                     leg: 0,
                     joint: 0,
                     kind: 0,
                 },
-            ))
+            )))
             .unwrap();
         server
             .controller
-            .set_calibration_result_set(&SetResult {
+            .set_calibration_result_set(&Wrapper(SetResult {
                 index: CalibrationIndex {
                     leg: 0,
                     joint: 0,
                     kind: 0,
                 },
                 result: SetRes::InvalidIndex,
-            })
+            }))
             .unwrap();
         Ok(Server(server))
     }
@@ -113,7 +121,7 @@ impl Server {
                     } else {
                         SyncKind::OnlyCommands
                     })),
-                    ControllerServiceEvent::StateWrite(SM(state_machine)) => {
+                    ControllerServiceEvent::StateWrite(Wrapper(SM(state_machine))) => {
                         Some(Command::ChangeState(state_machine))
                     }
                     ControllerServiceEvent::StateCccdWrite {
@@ -126,7 +134,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::AnimationFactorWrite(animation_factor) => {
-                        Some(Command::SetAnimationFactor(animation_factor.0))
+                        Some(Command::SetAnimationFactor(animation_factor.0 .0))
                     }
                     ControllerServiceEvent::AnimationFactorCccdWrite {
                         indications,
@@ -138,7 +146,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::AngularVelocityWrite(angular_velocity) => {
-                        Some(Command::SetAngularVelocity(angular_velocity.0))
+                        Some(Command::SetAngularVelocity(angular_velocity.0 .0))
                     }
                     ControllerServiceEvent::AngularVelocityCccdWrite {
                         indications,
@@ -149,7 +157,7 @@ impl Server {
                             UpdateKind::from_cccd(notifications, indications);
                         None
                     }
-                    ControllerServiceEvent::MotionVectorWrite(Vector(motion_vector)) => {
+                    ControllerServiceEvent::MotionVectorWrite(Wrapper(Vector(motion_vector))) => {
                         Some(Command::SetMotionVector(motion_vector))
                     }
                     ControllerServiceEvent::MotionVectorCccdWrite {
@@ -161,9 +169,9 @@ impl Server {
                             UpdateKind::from_cccd(notifications, indications);
                         None
                     }
-                    ControllerServiceEvent::BodyTranslationWrite(Translation(body_translation)) => {
-                        Some(Command::SetBodyTranslation(body_translation))
-                    }
+                    ControllerServiceEvent::BodyTranslationWrite(Wrapper(Translation(
+                        body_translation,
+                    ))) => Some(Command::SetBodyTranslation(body_translation)),
                     ControllerServiceEvent::BodyTranslationCccdWrite {
                         indications,
                         notifications,
@@ -173,9 +181,9 @@ impl Server {
                             UpdateKind::from_cccd(notifications, indications);
                         None
                     }
-                    ControllerServiceEvent::BodyRotationWrite(UQuaternion(body_rotation)) => {
-                        Some(Command::SetBodyRotation(body_rotation))
-                    }
+                    ControllerServiceEvent::BodyRotationWrite(Wrapper(UQuaternion(
+                        body_rotation,
+                    ))) => Some(Command::SetBodyRotation(body_rotation)),
                     ControllerServiceEvent::BodyRotationCccdWrite {
                         indications,
                         notifications,
@@ -186,7 +194,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::LegRadiusWrite(leg_radius) => {
-                        Some(Command::SetLegRadius(leg_radius.0))
+                        Some(Command::SetLegRadius(leg_radius.0 .0))
                     }
                     ControllerServiceEvent::LegRadiusCccdWrite {
                         indications,
@@ -210,7 +218,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::GetCalibationForWrite(calibration_index) => {
-                        Some(Command::GetCalibrationFor(calibration_index))
+                        Some(Command::GetCalibrationFor(calibration_index.0))
                     }
                     ControllerServiceEvent::GetCalibrationResultCccdWrite { notifications } => {
                         log::info!("get calibration result notifications: {}", notifications);
@@ -218,9 +226,9 @@ impl Server {
                             UpdateKind::from_cccd(notifications, false);
                         None
                     }
-                    ControllerServiceEvent::SetCalibrationDatumWrite(datum) => {
-                        Some(Command::SetCalibrationDatum(datum.value.0, datum.index))
-                    }
+                    ControllerServiceEvent::SetCalibrationDatumWrite(datum) => Some(
+                        Command::SetCalibrationDatum(datum.0.value().0, datum.0.index()),
+                    ),
                     ControllerServiceEvent::SetCalibrationResultCccdWrite { notifications } => {
                         log::info!("calibration result notifications: {}", notifications);
                         command_update.borrow_mut().set_calibration_result =
