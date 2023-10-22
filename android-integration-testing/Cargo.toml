@@ -1,0 +1,6 @@
+[workspace]
+members = ["jni", "manager"]
+resolver = "2"
+
+[profile.release]
+panic = 'abort'
