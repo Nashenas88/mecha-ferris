@@ -11,11 +11,11 @@ plugins {
 val grpcVersion = "1.45.1"
 
 android {
-    namespace = "com.mechaferris.mechaferris"
-    compileSdk = 33
+    namespace = "paulfaria.mechaferris"
+    compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.mechaferris.mechaferris"
+        applicationId = "paulfaria.mechaferris"
         minSdk = 33
         targetSdk = 33
         versionCode = 1
@@ -76,9 +76,10 @@ protobuf {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.10.1")
-    val lifecycleVersion = "2.6.1"
-    val navigationVersion = "2.5.3"
+    implementation("androidx.core:core-ktx:1.12.0")
+    val lifecycleVersion = "2.6.2"
+    val navigationVersion = "2.7.4"
+    val composeVersion = "1.5.3"
     val composeBom = platform("androidx.compose:compose-bom:2023.04.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -98,22 +99,22 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4")
 
     // Material Design 3
-    implementation("androidx.compose.material3:material3:1.1.0")
+    implementation("androidx.compose.material3:material3:1.1.2")
 
     // Android Studio Preview support
-    implementation("androidx.compose.ui:ui-tooling-preview:1.4.3")
-    debugImplementation("androidx.compose.ui:ui-tooling:1.4.3")
+    implementation("androidx.compose.ui:ui-tooling-preview:$composeVersion")
+    debugImplementation("androidx.compose.ui:ui-tooling:$composeVersion")
 
     // UI Tests
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4:1.4.3")
-    debugImplementation("androidx.compose.ui:ui-test-manifest:1.4.3")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4:$composeVersion")
+    debugImplementation("androidx.compose.ui:ui-test-manifest:$composeVersion")
 
     // Integration with activities
-    implementation("androidx.activity:activity-compose:1.7.2")
+    implementation("androidx.activity:activity-compose:1.8.0")
     // Integration with ViewModels
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleVersion")
     // Integration with LiveData
-    implementation("androidx.compose.runtime:runtime-livedata:1.4.3")
+    implementation("androidx.compose.runtime:runtime-livedata:$composeVersion")
 //    // Optional - Integration with RxJava
 //    implementation "androidx.compose.runtime:runtime-rxjava2"
 
@@ -128,9 +129,9 @@ dependencies {
     implementation("io.grpc:grpc-stub:$grpcVersion")
     implementation("io.grpc:grpc-protobuf-lite:$grpcVersion")
 
-    implementation("androidx.core:core-ktx:1.10.1")
+    implementation("androidx.core:core-ktx:1.12.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.9.0")
+    implementation("com.google.android.material:material:1.10.0")
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion")
