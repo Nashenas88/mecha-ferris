@@ -83,10 +83,6 @@ class CalibratingViewModel {
         } else {
             kind.intValue += 1
         }
-        Log.i(
-            "CalibratingViewModel",
-            "Indices: kind ${kind.intValue}, joint ${joint.intValue}, leg ${leg.intValue}"
-        )
     }
 
     fun prev() {
@@ -200,7 +196,6 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
             modifier = Modifier.fillMaxWidth()
         ) {
             Checkbox(checked = enabled, onCheckedChange = { new ->
-                Log.i("CalibratingView", "Enabled: $new")
                 enabled = new
             }, enabled = true)
             Spacer(modifier = Modifier.width(12.dp))
