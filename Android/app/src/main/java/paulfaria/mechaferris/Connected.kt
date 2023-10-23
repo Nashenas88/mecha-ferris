@@ -148,9 +148,9 @@ class Connected : ComponentActivity() {
                                 connectedViewModel.calibratingViewModel.let {
                                     cvm ->
                                     bleServiceData.requestCalibrationData(it,
-                                        cvm.legListModel.selected.intValue.toUByte(),
-                                        cvm.jointListModel.selected.intValue.toUByte(),
-                                        cvm.kindListModel.selected.intValue.toUByte(),
+                                        cvm.leg.intValue.toUByte(),
+                                        cvm.joint.intValue.toUByte(),
+                                        cvm.kind.intValue.toUByte(),
                                     )
                                     // TODO: show loading indicator to signify request in progress?
                                 }
@@ -489,7 +489,7 @@ fun ConnectedView(
                 }
 
                 ScaffoldState.Calibrating -> {
-                    CalibratingView(context, viewModel.calibratingViewModel)
+                    CalibratingView(viewModel.calibratingViewModel)
                 }
 
                 ScaffoldState.Controls -> {

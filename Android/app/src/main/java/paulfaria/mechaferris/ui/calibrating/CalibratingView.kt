@@ -2,7 +2,6 @@ package paulfaria.mechaferris.ui.calibrating
 
 import android.content.Context
 import android.content.res.Configuration
-import android.os.Parcelable
 import android.util.Log
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,9 +25,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableIntState
-import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -44,111 +40,89 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
-import kotlinx.parcelize.Parcelize
-import kotlinx.parcelize.RawValue
 import paulfaria.mechaferris.data.calibrationDataStore
 import paulfaria.mechaferris.ui.theme.MechaFerrisTheme
 
 class CalibratingViewModel {
     companion object {
-        val SHORT_KINDS = listOf("Min", "Mid", "Max")
-        val LONG_KINDS = listOf("Home", "Min", "Mid", "Max")
+        val LEG_OPTIONS = listOf("1", "2", "3", "4", "5", "6")
+        val JOINT_OPTIONS = listOf("Coxa", "Femur", "Tibia")
+        val SHORT_KIND_OPTIONS = listOf("Min", "Mid", "Max")
+        val LONG_KIND_OPTIONS = listOf("Home", "Min", "Mid", "Max")
     }
 
-    val legListModel = SpinnerViewModel(
-        options = listOf("1", "2", "3", "4", "5", "6"), label = "Leg"
-    )
-    val jointListModel = SpinnerViewModel(
-        options = listOf("Coxa", "Femur", "Tibia"), label = "Joint"
-    )
+    val leg = mutableIntStateOf(0)
+    val joint = mutableIntStateOf(0)
+    val kind = mutableIntStateOf(0)
     val enabled = mutableStateOf(false)
     val pulse = mutableFloatStateOf(1500.0f)
 
-    private val kindOptions by derivedStateOf {
-        Log.i(
-            "CalibratingViewModel",
-            "Derived state of kindOptions: ${jointListModel.selected.intValue}"
-        )
-        when (jointListModel.selected.intValue) {
+    fun kindOptions(): List<String> {
+        return when (joint.intValue) {
             // Coxa or Femur
-            0, 1 -> SHORT_KINDS
+            0, 1 -> SHORT_KIND_OPTIONS
             // Tibia
-            2 -> LONG_KINDS
-            else -> throw Exception("Invalid joint ${jointListModel.selected.intValue}")
+            2 -> LONG_KIND_OPTIONS
+            else -> throw Exception("Invalid joint ${joint.intValue}")
         }
     }
 
-    val kindListModel = SpinnerViewModel(
-        label = "Calibration Kind", options = kindOptions
-    )
-
-    fun next(kind: SpinnerViewModel) {
-        Log.i(
-            "CalibratingViewModel",
-            "Next ${kindListModel.options}, vs $kindOptions, vs ${kind.options}"
-        )
-        if (kindListModel.selected.intValue == kindListModel.options.size - 1) {
-            if (jointListModel.selected.intValue == jointListModel.options.size - 1) {
-                jointListModel.selected.intValue = 0
-                if (legListModel.selected.intValue == legListModel.options.size - 1) {
-                    legListModel.selected.intValue = 0
+    fun next() {
+        if (kind.intValue == kindOptions().size - 1) {
+            if (joint.intValue == JOINT_OPTIONS.size - 1) {
+                joint.intValue = 0
+                if (leg.intValue == LEG_OPTIONS.size - 1) {
+                    leg.intValue = 0
                 } else {
-                    legListModel.selected.intValue += 1
+                    leg.intValue += 1
                 }
             } else {
-                jointListModel.selected.intValue += 1
+                joint.intValue += 1
             }
-            kindListModel.selected.intValue = 0
+            kind.intValue = 0
         } else {
-            kindListModel.selected.intValue += 1
+            kind.intValue += 1
         }
         Log.i(
             "CalibratingViewModel",
-            "Indices: kind ${kindListModel.selected.intValue}, joint ${jointListModel.selected.intValue}, leg ${legListModel.selected.intValue}"
+            "Indices: kind ${kind.intValue}, joint ${joint.intValue}, leg ${leg.intValue}"
         )
     }
 
     fun prev() {
-        if (kindListModel.selected.intValue == 0) {
-            if (jointListModel.selected.intValue == 0) {
-                jointListModel.selected.intValue = jointListModel.options.size - 1
-                if (legListModel.selected.intValue == 0) {
-                    legListModel.selected.intValue = legListModel.options.size - 1
+        if (kind.intValue == 0) {
+            if (joint.intValue == 0) {
+                joint.intValue = JOINT_OPTIONS.size - 1
+                if (leg.intValue == 0) {
+                    leg.intValue = LEG_OPTIONS.size - 1
                 } else {
-                    legListModel.selected.intValue -= 1
+                    leg.intValue -= 1
                 }
             } else {
-                jointListModel.selected.intValue -= 1
+                joint.intValue -= 1
             }
-            kindListModel.selected.intValue = kindListModel.options.size - 1
+            kind.intValue = kindOptions().size - 1
         } else {
-            kindListModel.selected.intValue -= 1
+            kind.intValue -= 1
         }
     }
 }
 
-@Parcelize
-class SpinnerViewModel(
-    val options: List<String>,
-    val label: String,
-    val selected: @RawValue MutableIntState = mutableIntStateOf(0),
-    val expanded: @RawValue MutableState<Boolean> = mutableStateOf(false)
-) : Parcelable
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun Spinner(
-    viewModel: SpinnerViewModel,
-    onSelected: () -> Unit = {},
+    label: String,
+    options: List<String>,
+    selected: Int,
+    onSelected: (Int) -> Unit,
 ) {
-    var expanded by remember { viewModel.expanded }
-    var selected by remember { viewModel.selected }
+    var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
         TextField(
             readOnly = true,
-            value = viewModel.options[selected],
+            value = options[selected],
             onValueChange = {},
-            label = { Text(text = viewModel.label) },
+            label = { Text(text = label) },
             trailingIcon = {
                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
             },
@@ -158,11 +132,10 @@ fun Spinner(
                 .menuAnchor()
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            viewModel.options.forEachIndexed { index, _ ->
-                DropdownMenuItem(text = { Text(text = viewModel.options[index]) }, onClick = {
-                    selected = index
+            options.forEachIndexed { index, _ ->
+                DropdownMenuItem(text = { Text(text = options[index]) }, onClick = {
                     expanded = false
-                    onSelected()
+                    onSelected(index)
                 })
             }
         }
@@ -172,32 +145,46 @@ fun Spinner(
 fun Float.format(digits: Int) = "%07.${digits}f".format(this)
 
 @Composable
-fun CalibratingView(context: Context, viewModel: CalibratingViewModel) {
+fun CalibratingView(viewModel: CalibratingViewModel) {
     val coroutineScope = rememberCoroutineScope()
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(12.dp)
     ) {
-        Log.i("CalibratingView", "CalibratingView recomposing")
         var pulse by rememberSaveable {
             viewModel.pulse
         }
         var enabled by rememberSaveable {
             viewModel.enabled
         }
-        val kinds = remember {
-            viewModel.kindListModel
+        val leg = rememberSaveable {
+            viewModel.leg
         }
-        Log.i(
-            "CalibratingView",
-            "CalibratingView recomposing: [${viewModel.jointListModel.selected.intValue}] ${kinds.options}"
+        val joint = rememberSaveable {
+            viewModel.joint
+        }
+        val kind = rememberSaveable {
+            viewModel.kind
+        }
+
+        Spinner(options = CalibratingViewModel.LEG_OPTIONS, label = "Leg", selected = leg.intValue,
+            onSelected = {
+                leg.intValue = it
+            })
+        Spacer(modifier = Modifier.height(12.dp))
+        Spinner(options = CalibratingViewModel.JOINT_OPTIONS, label = "Joint", selected = joint.intValue,
+            onSelected = {
+                joint.intValue = it
+            })
+        Spacer(modifier = Modifier.height(12.dp))
+        Spinner(
+            options = viewModel.kindOptions(), label = "Calibration Kind",
+            selected = kind.intValue,
+            onSelected = {
+                kind.intValue = it
+            }
         )
-        Spinner(viewModel.legListModel)
-        Spacer(modifier = Modifier.height(12.dp))
-        Spinner(viewModel.jointListModel)
-        Spacer(modifier = Modifier.height(12.dp))
-        Spinner(kinds)
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 text = "Pulse: ${pulse.format(2)}",
@@ -214,7 +201,6 @@ fun CalibratingView(context: Context, viewModel: CalibratingViewModel) {
         ) {
             Checkbox(checked = enabled, onCheckedChange = { new ->
                 Log.i("CalibratingView", "Enabled: $new")
-                // TODO this doesn't work
                 enabled = new
             }, enabled = true)
             Spacer(modifier = Modifier.width(12.dp))
@@ -230,7 +216,7 @@ fun CalibratingView(context: Context, viewModel: CalibratingViewModel) {
             }
             Spacer(modifier = Modifier.weight(1f))
             Button(modifier = Modifier.weight(0.75f), onClick = {
-                viewModel.next(kinds)
+                viewModel.next()
             }) {
                 Text(text = "Next")
             }
@@ -247,6 +233,7 @@ fun CalibratingView(context: Context, viewModel: CalibratingViewModel) {
                 Text(text = "Save", color = MaterialTheme.colorScheme.onPrimary)
             }
             Spacer(modifier = Modifier.width(12.dp))
+            val context: Context = LocalContext.current
             Button(
                 modifier = Modifier.weight(0.75f),
                 onClick = {
@@ -269,8 +256,7 @@ fun CalibratingView(context: Context, viewModel: CalibratingViewModel) {
 @Composable
 fun CalibratingViewPreview() {
     MechaFerrisTheme {
-        val context = LocalContext.current
-        CalibratingView(context, CalibratingViewModel())
+        CalibratingView(CalibratingViewModel())
     }
 }
 
@@ -278,17 +264,14 @@ fun CalibratingViewPreview() {
 @Composable
 fun DropdownViewPreview() {
     val selected = remember { mutableIntStateOf(1) }
-    val expanded = remember { mutableStateOf(true) }
-    val viewModel = SpinnerViewModel(
-        options = listOf("Coxa", "Femur", "Tibia"),
-        label = "Joint",
-        selected = selected,
-        expanded = expanded
-    )
-
     Box(modifier = Modifier.padding(12.dp)) {
         Spinner(
-            viewModel
+            options = listOf("Coxa", "Femur", "Tibia"),
+            label = "Joint",
+            selected = selected.intValue,
+            onSelected = {
+                selected.intValue = it
+            }
         )
     }
 }
