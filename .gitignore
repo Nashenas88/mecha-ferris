@@ -26,3 +26,7 @@ simulator/rust/Cargo.lock
 simulator/rust/debug/
 simulator/target/
 simulator/test.sh
+
+# Profiling data
+*.profraw
+lcov.info
