@@ -7,7 +7,7 @@ use crate::{
     BatteryService, BatteryServiceEvent, Command, ControllerService, ControllerServiceEvent,
     ROBOT_STATE,
 };
-use bluetooth_comms::wrappers::{Translation, UQuaternion, Vector, F32, SM};
+use bluetooth_comms::wrappers::{Translation, UQuaternion, Vector, SM};
 use bluetooth_comms::{CalibrationDatum, CalibrationIndex, SetRes, SetResult};
 use communication::I2cRequest;
 use embassy_executor::Spawner;
@@ -38,11 +38,11 @@ impl Server {
             .unwrap();
         server
             .controller
-            .animation_factor_set(&Wrapper(F32(1.0)))
+            .animation_factor_set(&Wrapper(1.0))
             .unwrap();
         server
             .controller
-            .angular_velocity_set(&Wrapper(F32(0.0)))
+            .angular_velocity_set(&Wrapper(0.0))
             .unwrap();
         server
             .controller
@@ -58,10 +58,7 @@ impl Server {
                 0.0, 0.0, 0.0,
             ))))
             .unwrap();
-        server
-            .controller
-            .leg_radius_set(&Wrapper(F32(0.0)))
-            .unwrap();
+        server.controller.leg_radius_set(&Wrapper(0.0)).unwrap();
         server
             .controller
             .battery_update_interval_ms_set(&0)
@@ -134,7 +131,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::AnimationFactorWrite(animation_factor) => {
-                        Some(Command::SetAnimationFactor(animation_factor.0 .0))
+                        Some(Command::SetAnimationFactor(animation_factor.0))
                     }
                     ControllerServiceEvent::AnimationFactorCccdWrite {
                         indications,
@@ -146,7 +143,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::AngularVelocityWrite(angular_velocity) => {
-                        Some(Command::SetAngularVelocity(angular_velocity.0 .0))
+                        Some(Command::SetAngularVelocity(angular_velocity.0))
                     }
                     ControllerServiceEvent::AngularVelocityCccdWrite {
                         indications,
@@ -194,7 +191,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::LegRadiusWrite(leg_radius) => {
-                        Some(Command::SetLegRadius(leg_radius.0 .0))
+                        Some(Command::SetLegRadius(leg_radius.0))
                     }
                     ControllerServiceEvent::LegRadiusCccdWrite {
                         indications,
@@ -227,7 +224,7 @@ impl Server {
                         None
                     }
                     ControllerServiceEvent::SetCalibrationDatumWrite(datum) => Some(
-                        Command::SetCalibrationDatum(datum.0.value().0, datum.0.index()),
+                        Command::SetCalibrationDatum(datum.0.value(), datum.0.index()),
                     ),
                     ControllerServiceEvent::SetCalibrationResultCccdWrite { notifications } => {
                         log::info!("calibration result notifications: {}", notifications);

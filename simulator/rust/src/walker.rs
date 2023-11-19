@@ -63,7 +63,7 @@ pub struct Walker {
     target_coxa_space: NodePath,
     #[property]
     target_femur_space: NodePath,
-    robot_state: RobotState,
+    robot_state: RobotState<(), 3, 6>,
     tracking_nodes: Vec<Ref<CSGSphere>>,
 }
 

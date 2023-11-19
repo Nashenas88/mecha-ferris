@@ -1,5 +1,4 @@
 #![no_std]
-#![feature(const_trait_impl)]
 
 pub use nalgebra::{Quaternion, Translation3, Unit, UnitQuaternion, Vector3};
 

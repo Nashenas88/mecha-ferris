@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -41,6 +42,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.delay
 import kotlinx.parcelize.Parcelize
 import paulfaria.mechaferris.Constants.Companion.DEVICE_ADDRESS_EXTRA
 import paulfaria.mechaferris.Constants.Companion.DEVICE_NAME_EXTRA
@@ -61,16 +63,10 @@ class MainActivity : ComponentActivity() {
                 bleServiceData = service as BleService.BluetoothServiceBinder
                 bleServiceData?.setDeviceCallbacks(onDeviceFound = {
                     val state = BluetoothDeviceState(it.name, it.address)
-                    val prev = mainViewModel.devicesSet.put(it.address, state)
-                    if (prev == null) {
-                        mainViewModel.devices.add(state)
-                    } else if (prev.name != it.name) {
-                        mainViewModel.devices[mainViewModel.devices.indexOf(prev)] = state
-                    }
+                    mainViewModel.onDeviceFound(state)
                 }, onDeviceLost = {
                     val state = BluetoothDeviceState(it.name, it.address)
-                    mainViewModel.devicesSet.remove(it.address)
-                    mainViewModel.devices.removeIf { d -> d.address == state.address }
+                    mainViewModel.onDeviceLost(state)
                 })
             }
         }
@@ -179,8 +175,22 @@ fun MainView(viewModel: MainViewModel = viewModel(), onConnect: (BluetoothDevice
 }
 
 class MainViewModel : ViewModel() {
-    var devicesSet = HashMap<String, BluetoothDeviceState>()
+    private var devicesSet = HashMap<String, BluetoothDeviceState>()
     val devices = mutableStateListOf<BluetoothDeviceState>()
+
+    fun onDeviceFound(state: BluetoothDeviceState) {
+        val prev = devicesSet.put(state.address, state)
+        if (prev == null) {
+            devices.add(state)
+        } else if (prev.name != state.name) {
+            devices[devices.indexOf(prev)] = state
+        }
+    }
+
+    fun onDeviceLost(state: BluetoothDeviceState) {
+        devicesSet.remove(state.address)
+        devices.removeIf { d -> d.address == state.address }
+    }
 }
 
 @Composable
@@ -217,14 +227,20 @@ data class BluetoothDeviceState(
 @Composable
 @Preview
 fun MainViewPreview() {
-    MechaFerrisTheme(darkTheme = true) {
-        val viewModel = remember {
-            MainViewModel().apply {
-                devices.apply {
-                    add(BluetoothDeviceState("MechaFerris", "87:b2:ac:21:1e:6c"))
-                }
+    val viewModel = MainViewModel()
+    viewModel.onDeviceFound(BluetoothDeviceState("MechaFerris", "87:b2:ac:21:1e:6c"))
+    LaunchedEffect(Unit) {
+        while (true) {
+            for (i in 0..10) {
+                delay(500)
+                viewModel.onDeviceFound(BluetoothDeviceState("MechaFerris $i", "87:b2:ac:21:1e:6c"))
             }
+            delay(1000)
+            viewModel.onDeviceLost(BluetoothDeviceState("MechaFerris", "87:b2:ac:21:1e:6c"))
+            delay(1000)
         }
+    }
+    MechaFerrisTheme(darkTheme = true) {
         Surface {
             MainView(viewModel) {}
         }

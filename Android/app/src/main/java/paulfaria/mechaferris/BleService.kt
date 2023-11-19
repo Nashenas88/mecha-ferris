@@ -22,7 +22,9 @@ import android.util.Log
 import androidx.core.app.ActivityCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import no.nordicsemi.android.ble.BleManager
@@ -33,17 +35,17 @@ import java.util.UUID
 class BleService : Service() {
     private val defaultScope = CoroutineScope(Dispatchers.Default)
     private lateinit var bluetoothObserver: BroadcastReceiver
-    private var batteryChangeNotifications: SendChannel<UInt>? = null
-    private var stateMachineChangeNotifications: SendChannel<StateMachine>? = null
-    private var animationFactorChangeNotifications: SendChannel<Float>? = null
-    private var angularVelocityChangeNotifications: SendChannel<Float>? = null
-    private var motionVectorChangeNotifications: SendChannel<Vector3>? = null
-    private var bodyTranslationChangeNotifications: SendChannel<Translation>? = null
-    private var bodyRotationChangeNotifications: SendChannel<Quaternion>? = null
-    private var legRadiusChangeNotifications: SendChannel<Float>? = null
-    private var batteryUpdateIntervalMsChangeNotifications: SendChannel<UInt>? = null
-    private var getCalibrationResultChangeNotifications: SendChannel<CalibrationDatum>? = null
-    private var setCalibrationResultChangeNotifications: SendChannel<SetResult>? = null
+    private var _batteryChannel = Channel<UInt>()
+    private var _stateMachineChannel = Channel<StateMachine>()
+    private var _animationFactorChannel = Channel<Float>()
+    private var _angularVelocityChannel = Channel<Float>()
+    private var _motionVectorChannel = Channel<Vector3>()
+    private var _bodyTranslationChannel = Channel<Translation>()
+    private var _bodyRotationChannel = Channel<Quaternion>()
+    private var _legRadiusChannel = Channel<Float>()
+    private var _batteryUpdateIntervalMsChannel = Channel<UInt>()
+    private var _getCalibrationResultChannel = Channel<CalibrationDatum>()
+    private var _setCalibrationResultChannel = Channel<SetResult>()
     private var onDeviceFound: ((BluetoothDevice) -> Unit)? = null
     private var onDeviceLost: ((BluetoothDevice) -> Unit)? = null
     private var clientManagers = mutableMapOf<String, ClientManager>()
@@ -150,9 +152,17 @@ class BleService : Service() {
     }
 
     inner class BluetoothServiceBinder : Binder() {
-        suspend fun setBatteryLevel(address: String, level: UInt) {
-            clientManagers[address]?.setBatteryLevel(level)
-        }
+        val batteryFlow: Flow<UInt> = _batteryChannel.receiveAsFlow()
+        val stateMachineFlow: Flow<StateMachine> = _stateMachineChannel.receiveAsFlow()
+        val animationFactorFlow: Flow<Float> = _animationFactorChannel.receiveAsFlow()
+        val angularVelocityFlow: Flow<Float> = _angularVelocityChannel.receiveAsFlow()
+        val motionVectorFlow: Flow<Vector3> = _motionVectorChannel.receiveAsFlow()
+        val bodyTranslationFlow: Flow<Translation> = _bodyTranslationChannel.receiveAsFlow()
+        val bodyRotationFlow: Flow<Quaternion> = _bodyRotationChannel.receiveAsFlow()
+        val legRadiusFlow: Flow<Float> = _legRadiusChannel.receiveAsFlow()
+        val batteryUpdateIntervalMsFlow: Flow<UInt> = _batteryUpdateIntervalMsChannel.receiveAsFlow()
+        val getCalibrationResultFlow: Flow<CalibrationDatum> = _getCalibrationResultChannel.receiveAsFlow()
+        val setCalibrationResultFlow: Flow<SetResult> = _setCalibrationResultChannel.receiveAsFlow()
 
         @SuppressLint("MissingPermission")
         suspend fun sync(address: String, all: Boolean) {
@@ -199,50 +209,6 @@ class BleService : Service() {
                 calibration.kind.number.toUByte(),
                 calibration.pulse
             )
-        }
-
-        fun setBatteryChangedChannel(channel: SendChannel<UInt>) {
-            batteryChangeNotifications = channel
-        }
-
-        fun setStateMachineChangedChannel(channel: SendChannel<StateMachine>) {
-            stateMachineChangeNotifications = channel
-        }
-
-        fun setAnimationFactorChangedChannel(channel: SendChannel<Float>) {
-            animationFactorChangeNotifications = channel
-        }
-
-        fun setAngularVelocityChangedChannel(channel: SendChannel<Float>) {
-            angularVelocityChangeNotifications = channel
-        }
-
-        fun setMotionVectorChangedChannel(channel: SendChannel<Vector3>) {
-            motionVectorChangeNotifications = channel
-        }
-
-        fun setBodyTranslationChangedChannel(channel: SendChannel<Translation>) {
-            bodyTranslationChangeNotifications = channel
-        }
-
-        fun setBodyRotationChangedChannel(channel: SendChannel<Quaternion>) {
-            bodyRotationChangeNotifications = channel
-        }
-
-        fun setLegRadiusChangedChannel(channel: SendChannel<Float>) {
-            legRadiusChangeNotifications = channel
-        }
-
-        fun setBatteryUpdateIntervalMsChangedChannel(channel: SendChannel<UInt>) {
-            batteryUpdateIntervalMsChangeNotifications = channel
-        }
-
-        fun setGetCalibrationResultChangedChannel(channel: SendChannel<CalibrationDatum>) {
-            getCalibrationResultChangeNotifications = channel
-        }
-
-        fun setSetCalibrationResultChangedChannel(channel: SendChannel<SetResult>) {
-            setCalibrationResultChangeNotifications = channel
         }
 
         suspend fun getBatteryLevel(address: String): UInt? {
@@ -309,15 +275,6 @@ class BleService : Service() {
 
     override fun onUnbind(intent: Intent?): Boolean = when (intent?.action) {
         DATA_PLANE_ACTION -> {
-            batteryChangeNotifications = null
-            stateMachineChangeNotifications = null
-            animationFactorChangeNotifications = null
-            angularVelocityChangeNotifications = null
-            motionVectorChangeNotifications = null
-            bodyTranslationChangeNotifications = null
-            bodyRotationChangeNotifications = null
-            legRadiusChangeNotifications = null
-            batteryUpdateIntervalMsChangeNotifications = null
             onDeviceFound = null
             onDeviceLost = null
 
@@ -399,7 +356,7 @@ class BleService : Service() {
                 val batteryLevel = data.value?.let { RustLibrary.ReadBatteryLevel(it) }
                 batteryLevel?.let {
                     defaultScope.launch {
-                        batteryChangeNotifications?.send(it)
+                        _batteryChannel.send(it)
                     }
                 }
             }
@@ -407,7 +364,7 @@ class BleService : Service() {
 //                    val sync = data.value?.let { RustLibrary.ReadSync(it) }
 //                    sync?.let {
 //                        defaultScope.launch {
-//                            syncChangeNotifications?.send(it)
+//                            _syncChannel.send(it)
 //                        }
 //                    }
 //                }
@@ -415,7 +372,7 @@ class BleService : Service() {
                 val stateMachine = data.value?.let { RustLibrary.ReadState(it) }
                 stateMachine?.let {
                     defaultScope.launch {
-                        stateMachineChangeNotifications?.send(it)
+                        _stateMachineChannel.send(it)
                     }
                 }
             }
@@ -425,7 +382,7 @@ class BleService : Service() {
                 }
                 animationFactor?.let {
                     defaultScope.launch {
-                        animationFactorChangeNotifications?.send(it)
+                        _animationFactorChannel.send(it)
                     }
                 }
             }
@@ -435,7 +392,7 @@ class BleService : Service() {
                 }
                 angularVelocity?.let {
                     defaultScope.launch {
-                        angularVelocityChangeNotifications?.send(it)
+                        _angularVelocityChannel.send(it)
                     }
                 }
             }
@@ -443,7 +400,7 @@ class BleService : Service() {
                 val motionVector = data.value?.let { RustLibrary.ReadMotionVector(it) }
                 motionVector?.let {
                     defaultScope.launch {
-                        motionVectorChangeNotifications?.send(it)
+                        _motionVectorChannel.send(it)
                     }
                 }
             }
@@ -453,7 +410,7 @@ class BleService : Service() {
                 }
                 bodyTranslation?.let {
                     defaultScope.launch {
-                        bodyTranslationChangeNotifications?.send(it)
+                        _bodyTranslationChannel.send(it)
                     }
                 }
             }
@@ -463,7 +420,7 @@ class BleService : Service() {
                 }
                 bodyRotation?.let {
                     defaultScope.launch {
-                        bodyRotationChangeNotifications?.send(it)
+                        _bodyRotationChannel.send(it)
                     }
                 }
             }
@@ -473,7 +430,7 @@ class BleService : Service() {
                 }
                 legRadius?.let {
                     defaultScope.launch {
-                        legRadiusChangeNotifications?.send(it)
+                        _legRadiusChannel.send(it)
                     }
                 }
             }
@@ -482,7 +439,7 @@ class BleService : Service() {
                     data.value?.let { RustLibrary.ReadBatteryUpdateInterval(it) }
                 batteryUpdateIntervalMs?.let {
                     defaultScope.launch {
-                        batteryUpdateIntervalMsChangeNotifications?.send(it)
+                        _batteryUpdateIntervalMsChannel.send(it)
                     }
                 }
             }
@@ -490,7 +447,7 @@ class BleService : Service() {
                 val calibrationData = data.value?.let { RustLibrary.ReadGetCalibrationResult(it) }
                 calibrationData?.let {
                     defaultScope.launch {
-                        getCalibrationResultChangeNotifications?.send(it)
+                        _getCalibrationResultChannel.send(it)
                     }
                 }
             }
@@ -498,7 +455,7 @@ class BleService : Service() {
                 val calibrationResult = data.value?.let { RustLibrary.ReadSetCalibrationResult(it) }
                 calibrationResult?.let {
                     defaultScope.launch {
-                        setCalibrationResultChangeNotifications?.send(it)
+                        _setCalibrationResultChannel.send(it)
                     }
                 }
             }
@@ -612,18 +569,6 @@ class BleService : Service() {
             log(Log.INFO, "Manager ready")
             bluetoothDevice?.let {
                 onDeviceFound?.invoke(it)
-            }
-        }
-
-        suspend fun setBatteryLevel(batteryLevel: UInt) {
-            suspendCancellableCoroutine { continuation ->
-                writeCharacteristic(
-                    batteryCharacteristic,
-                    RustLibrary.SendBatteryLevel(batteryLevel),
-                    BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                ).done { continuation.resumeWith(Result.success(Unit)) }
-                    .fail { _, status -> continuation.resumeWith(Result.failure(Exception("Could not set battery level: $status"))) }
-                    .enqueue()
             }
         }
 

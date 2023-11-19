@@ -1,5 +1,4 @@
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_fn_floating_point_arithmetic, const_trait_impl)]
 
 pub mod animation;
 mod leg;

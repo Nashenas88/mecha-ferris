@@ -1,5 +1,3 @@
-#![feature(maybe_uninit_array_assume_init)]
-
 extern crate jni;
 use bluetooth_comms::wrappers::{
     Quaternion, StateMachine, Translation, Translation3, UQuaternion, UnitQuaternion, Vector,
@@ -167,7 +165,11 @@ fn get_floats<const SIZE: usize>(
     }
 
     // Safety: All values are initialized.
-    unsafe { MaybeUninit::array_assume_init(res) }
+    unsafe {
+        (*(&MaybeUninit::<[MaybeUninit<f32>; SIZE]>::new(res) as *const _
+            as *const MaybeUninit<[f32; SIZE]>))
+            .assume_init_read()
+    }
 }
 
 #[export_name = "Java_paulfaria_mechaferris_RustLibrary_00024Companion_SendMotionVector"]

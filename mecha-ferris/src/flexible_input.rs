@@ -1,24 +1,26 @@
 use core::hint::unreachable_unchecked;
 use embedded_hal::digital::v2::InputPin;
+use pimoroni_servo2040::hal::adc::AdcPin;
 use pimoroni_servo2040::hal::gpio::{
-    BusKeepInput, FloatingInput, Pin, PinId, PullDownDisabled, PullDownInput, PullUpInput,
+    FunctionNull, FunctionSioInput, Pin, PinId, PullBusKeep, PullDown, PullNone, PullUp,
+    ValidFunction,
 };
 
 pub enum FlexibleInput<I>
 where
     I: PinId,
 {
-    PullUpInput(Pin<I, PullUpInput>),
-    PullDownInput(Pin<I, PullDownInput>),
-    BusKeepInput(Pin<I, BusKeepInput>),
-    FloatingInput(Pin<I, FloatingInput>),
-    PullDownDisabled(Pin<I, PullDownDisabled>),
+    PullUpInput(Pin<I, FunctionSioInput, PullUp>),
+    PullDownInput(Pin<I, FunctionSioInput, PullDown>),
+    BusKeepInput(Pin<I, FunctionSioInput, PullBusKeep>),
+    FloatingInput(Pin<I, FunctionSioInput, PullNone>),
+    PullDownDisabled(Pin<I, FunctionNull, PullDown>),
     Empty,
 }
 
 impl<I> FlexibleInput<I>
 where
-    I: PinId,
+    I: PinId + ValidFunction<FunctionSioInput> + ValidFunction<FunctionNull>,
 {
     pub(crate) fn into_pull_up_input(self) -> Self {
         match self {
@@ -125,30 +127,26 @@ where
         }
     }
 
-    pub(crate) fn mut_floating_input(&mut self) -> &mut Pin<I, FloatingInput> {
-        *self = match self.take() {
-            FlexibleInput::PullUpInput(pin) => {
-                FlexibleInput::FloatingInput(pin.into_floating_input())
-            }
-            FlexibleInput::PullDownInput(pin) => {
-                FlexibleInput::FloatingInput(pin.into_floating_input())
-            }
-            FlexibleInput::BusKeepInput(pin) => {
-                FlexibleInput::FloatingInput(pin.into_floating_input())
-            }
-            FlexibleInput::FloatingInput(pin) => FlexibleInput::FloatingInput(pin),
-            FlexibleInput::PullDownDisabled(pin) => {
-                FlexibleInput::FloatingInput(pin.into_floating_input())
-            }
+    pub(crate) fn with_floating_input<T>(
+        &mut self,
+        mut func: impl FnMut(&mut AdcPin<Pin<I, FunctionSioInput, PullNone>>) -> T,
+    ) -> T {
+        let pin = match self.take() {
+            FlexibleInput::PullUpInput(pin) => pin.into_floating_input(),
+            FlexibleInput::PullDownInput(pin) => pin.into_floating_input(),
+            FlexibleInput::BusKeepInput(pin) => pin.into_floating_input(),
+            FlexibleInput::FloatingInput(pin) => pin,
+            FlexibleInput::PullDownDisabled(pin) => pin.into_floating_input(),
             FlexibleInput::Empty => {
                 unreachable!()
             }
         };
-        match self {
-            FlexibleInput::FloatingInput(ref mut pin) => pin,
-            // Safety: We just set the value above.
-            _ => unsafe { unreachable_unchecked() },
-        }
+        let mut adc_pin = AdcPin::new(pin);
+        let res = func(&mut adc_pin);
+
+        let pin = adc_pin.release();
+        let _ = core::mem::replace(self, FlexibleInput::FloatingInput(pin));
+        res
     }
 
     pub(crate) fn take(&mut self) -> Self {
@@ -213,47 +211,47 @@ where
     }
 }
 
-impl<I> From<Pin<I, PullUpInput>> for FlexibleInput<I>
+impl<I> From<Pin<I, FunctionSioInput, PullUp>> for FlexibleInput<I>
 where
     I: PinId,
 {
-    fn from(pin: Pin<I, PullUpInput>) -> Self {
+    fn from(pin: Pin<I, FunctionSioInput, PullUp>) -> Self {
         FlexibleInput::PullUpInput(pin)
     }
 }
 
-impl<I> From<Pin<I, PullDownInput>> for FlexibleInput<I>
+impl<I> From<Pin<I, FunctionSioInput, PullDown>> for FlexibleInput<I>
 where
     I: PinId,
 {
-    fn from(pin: Pin<I, PullDownInput>) -> Self {
+    fn from(pin: Pin<I, FunctionSioInput, PullDown>) -> Self {
         FlexibleInput::PullDownInput(pin)
     }
 }
 
-impl<I> From<Pin<I, BusKeepInput>> for FlexibleInput<I>
+impl<I> From<Pin<I, FunctionSioInput, PullBusKeep>> for FlexibleInput<I>
 where
     I: PinId,
 {
-    fn from(pin: Pin<I, BusKeepInput>) -> Self {
+    fn from(pin: Pin<I, FunctionSioInput, PullBusKeep>) -> Self {
         FlexibleInput::BusKeepInput(pin)
     }
 }
 
-impl<I> From<Pin<I, FloatingInput>> for FlexibleInput<I>
+impl<I> From<Pin<I, FunctionSioInput, PullNone>> for FlexibleInput<I>
 where
     I: PinId,
 {
-    fn from(pin: Pin<I, FloatingInput>) -> Self {
+    fn from(pin: Pin<I, FunctionSioInput, PullNone>) -> Self {
         FlexibleInput::FloatingInput(pin)
     }
 }
 
-impl<I> From<Pin<I, PullDownDisabled>> for FlexibleInput<I>
+impl<I> From<Pin<I, FunctionNull, PullDown>> for FlexibleInput<I>
 where
     I: PinId,
 {
-    fn from(pin: Pin<I, PullDownDisabled>) -> Self {
+    fn from(pin: Pin<I, FunctionNull, PullDown>) -> Self {
         FlexibleInput::PullDownDisabled(pin)
     }
 }

@@ -1,24 +1,20 @@
 use core::marker::PhantomData;
 
 use embedded_hal::adc::{Channel, OneShot};
-use pimoroni_servo2040::hal::gpio::bank0::Gpio29;
-use pimoroni_servo2040::hal::gpio::{FloatingInput, Pin};
+use pimoroni_servo2040::hal::adc::AdcPin;
 use pimoroni_servo2040::hal::Adc;
 use pimoroni_servo2040::{CURRENT_GAIN, CURRENT_OFFSET};
 use servo_pio::calibration::map_float;
 
-use crate::analog_mux::{CurrentSensor, VoltageSensor};
+use crate::analog_mux::{CurrentSensor, FloatingSharedAdcPin as SharedAdcPin, VoltageSensor};
 
-type SharedAdcPin = Pin<Gpio29, FloatingInput>;
-
-#[repr(transparent)]
 pub struct Analog<'a, T> {
-    pin: &'a mut SharedAdcPin,
+    pin: &'a mut AdcPin<SharedAdcPin>,
     _phantom: PhantomData<T>,
 }
 
 impl<'a, T> Analog<'a, T> {
-    pub(crate) fn new(pin: &'a mut SharedAdcPin) -> Self {
+    pub(crate) fn new(pin: &'a mut AdcPin<SharedAdcPin>) -> Self {
         Self {
             pin,
             _phantom: PhantomData,
@@ -27,7 +23,7 @@ impl<'a, T> Analog<'a, T> {
 
     /// Read the raw data for this sensor.
     pub fn read_raw(&mut self, adc: &mut Adc) -> u16 {
-        <Adc as OneShot<Adc, u16, SharedAdcPin>>::read(adc, self.pin).unwrap()
+        <Adc as OneShot<Adc, u16, AdcPin<SharedAdcPin>>>::read(adc, self.pin).unwrap()
     }
 }
 
@@ -45,7 +41,7 @@ impl<'a> Analog<'a, CurrentSensor> {
     pub fn read_current(&mut self, adc: &mut Adc) -> f32 {
         // Safety: Analog has 1 field, and the generic does not affect the fields.
         // Layout should be the same.
-        unsafe { core::mem::transmute::<_, &mut Analog<'a, VoltageSensor>>(self) }.read_voltage(adc)
+        unsafe { core::mem::transmute::<_, &mut Analog<VoltageSensor>>(self) }.read_voltage(adc)
             / pimoroni_servo2040::SHUNT_RESISTOR
     }
 }

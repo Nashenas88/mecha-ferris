@@ -4,19 +4,18 @@ use embedded_hal::digital::v2::{InputPin, OutputPin, PinState};
 use embedded_hal::timer::CountDown as _;
 use fugit::ExtU64;
 use pimoroni_servo2040::hal::gpio::bank0::{Gpio22, Gpio24, Gpio25, Gpio29};
-use pimoroni_servo2040::hal::gpio::PushPullOutput;
-use pimoroni_servo2040::hal::gpio::{FloatingInput, Pin};
+use pimoroni_servo2040::hal::gpio::{FunctionSioInput, FunctionSioOutput, Pin, PullNone};
 use pimoroni_servo2040::hal::timer::CountDown;
 use pimoroni_servo2040::{
     CURRENT_SENSE_ADDR, SENSOR_1_ADDR, SENSOR_2_ADDR, SENSOR_3_ADDR, SENSOR_4_ADDR, SENSOR_5_ADDR,
     SENSOR_6_ADDR, VOLTAGE_SENSE_ADDR,
 };
 
-pub type AdcAddr0Pin = Pin<Gpio22, PushPullOutput>;
-pub type AdcAddr1Pin = Pin<Gpio24, PushPullOutput>;
-pub type AdcAddr2Pin = Pin<Gpio25, PushPullOutput>;
+pub type AdcAddr0Pin = Pin<Gpio22, FunctionSioOutput, PullNone>;
+pub type AdcAddr1Pin = Pin<Gpio24, FunctionSioOutput, PullNone>;
+pub type AdcAddr2Pin = Pin<Gpio25, FunctionSioOutput, PullNone>;
 pub type SharedAdcPin = FlexibleInput<Gpio29>;
-pub type FloatingSharedAdcPin = Pin<Gpio29, FloatingInput>;
+pub type FloatingSharedAdcPin = Pin<Gpio29, FunctionSioInput, PullNone>;
 const MAX_ADDRESS: u8 = 0b_0000_0111;
 
 pub struct Sensor1;
@@ -159,11 +158,16 @@ impl AnalogMux {
         self.muxed_pin.is_low()
     }
 
-    pub fn reader<T>(&mut self, count_down: &mut CountDown) -> Analog<'_, T>
+    pub fn with_reader<T, O>(
+        &mut self,
+        count_down: &mut CountDown,
+        mut func: impl FnMut(&mut CountDown, Analog<T>) -> O,
+    ) -> O
     where
         T: SensorAddress,
     {
         self.select(T::ADDR, count_down);
-        Analog::new(self.muxed_pin.mut_floating_input())
+        self.muxed_pin
+            .with_floating_input(|adc_pin| func(count_down, Analog::new(adc_pin)))
     }
 }

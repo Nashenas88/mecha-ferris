@@ -4,13 +4,13 @@ pub use defmt::{error, info, panic, trace, warn};
 #[cfg(not(feature = "defmt"))]
 #[macro_export]
 macro_rules! error {
-    ($($arg:tt)*) => {{}};
+    ($($arg:expr),*$(,)?) => {{$(let _ = $arg;)*}};
 }
 
 #[cfg(not(feature = "defmt"))]
 #[macro_export]
 macro_rules! info {
-    ($($arg:tt)*) => {{}};
+    ($($arg:expr),*$(,)?) => {{$(let _ = $arg;)*}};
 }
 
 #[cfg(not(feature = "defmt"))]
@@ -22,13 +22,13 @@ macro_rules! panic_ {
 #[cfg(not(feature = "defmt"))]
 #[macro_export]
 macro_rules! trace {
-    ($($arg:tt)*) => {{}};
+    ($($arg:expr),*$(,)?) => {{$(let _ = $arg;)*}};
 }
 
 #[cfg(not(feature = "defmt"))]
 #[macro_export]
 macro_rules! warn_ {
-    ($($arg:tt)*) => {{}};
+    ($($arg:expr),*$(,)?) => {{$(let _ = $arg;)*}};
 }
 
 #[cfg(not(feature = "defmt"))]

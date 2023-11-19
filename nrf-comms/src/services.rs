@@ -1,7 +1,7 @@
 use nrf_softdevice::ble::gatt_server::{IndicateValueError, NotifyValueError};
 use nrf_softdevice::ble::{Connection, FixedGattValue};
 
-use bluetooth_comms::wrappers::{Translation, UQuaternion, Vector, F32, SM};
+use bluetooth_comms::wrappers::{Translation, UQuaternion, Vector, SM};
 use bluetooth_comms::{CalibrationDatum, CalibrationIndex, SetResult, TestableFixedGattValue};
 
 use crate::command::{CommandResult, CommandUpdate, UpdateKind};
@@ -52,7 +52,7 @@ pub(crate) struct ControllerService {
         notify,
         indicate
     )]
-    pub(crate) animation_factor: Wrapper<F32>,
+    pub(crate) animation_factor: Wrapper<f32>,
 
     #[characteristic(
         uuid = "6be80625-e69b-418e-bf01-9abc617cdd9f",
@@ -61,7 +61,7 @@ pub(crate) struct ControllerService {
         notify,
         indicate
     )]
-    pub(crate) angular_velocity: Wrapper<F32>,
+    pub(crate) angular_velocity: Wrapper<f32>,
 
     #[characteristic(
         uuid = "77d6f220-7057-4dc6-8746-8a23b06e53d6",
@@ -97,7 +97,7 @@ pub(crate) struct ControllerService {
         notify,
         indicate
     )]
-    pub(crate) leg_radius: Wrapper<F32>,
+    pub(crate) leg_radius: Wrapper<f32>,
 
     #[characteristic(
         uuid = "d007632f-10e5-427a-b158-482aeb48b90e",
@@ -157,10 +157,10 @@ pub(crate) fn update(
             .state_indicate(conn, &Wrapper(SM(state_machine)))?,
         (CommandResult::SetAnimationFactor(animation_factor), Some(UpdateKind::Notify)) => server
             .controller()
-            .animation_factor_notify(conn, &Wrapper(F32(animation_factor)))?,
+            .animation_factor_notify(conn, &Wrapper(animation_factor))?,
         (CommandResult::SetAnimationFactor(animation_factor), Some(UpdateKind::Indicate)) => server
             .controller()
-            .animation_factor_indicate(conn, &Wrapper(F32(animation_factor)))?,
+            .animation_factor_indicate(conn, &Wrapper(animation_factor))?,
         (CommandResult::SetBodyTranslation(body_translation), Some(UpdateKind::Notify)) => server
             .controller()
             .body_translation_notify(conn, &Wrapper(Translation(body_translation)))?,
@@ -181,16 +181,16 @@ pub(crate) fn update(
             .motion_vector_indicate(conn, &Wrapper(Vector(motion_vector)))?,
         (CommandResult::SetAngularVelocity(angular_velocity), Some(UpdateKind::Notify)) => server
             .controller()
-            .angular_velocity_notify(conn, &Wrapper(F32(angular_velocity)))?,
+            .angular_velocity_notify(conn, &Wrapper(angular_velocity))?,
         (CommandResult::SetAngularVelocity(angular_velocity), Some(UpdateKind::Indicate)) => server
             .controller()
-            .angular_velocity_indicate(conn, &Wrapper(F32(angular_velocity)))?,
+            .angular_velocity_indicate(conn, &Wrapper(angular_velocity))?,
         (CommandResult::SetLegRadius(leg_radius), Some(UpdateKind::Notify)) => server
             .controller()
-            .leg_radius_notify(conn, &Wrapper(F32(leg_radius)))?,
+            .leg_radius_notify(conn, &Wrapper(leg_radius))?,
         (CommandResult::SetLegRadius(leg_radius), Some(UpdateKind::Indicate)) => server
             .controller()
-            .leg_radius_indicate(conn, &Wrapper(F32(leg_radius)))?,
+            .leg_radius_indicate(conn, &Wrapper(leg_radius))?,
         (CommandResult::GetCalibrationFor(cal_datum), Some(UpdateKind::Notify)) => server
             .controller()
             .get_calibration_result_notify(conn, &Wrapper(cal_datum))?,

@@ -39,7 +39,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import paulfaria.mechaferris.calibration.Joint
+import paulfaria.mechaferris.calibration.ServoCalibration
 import paulfaria.mechaferris.data.calibrationDataStore
 import paulfaria.mechaferris.ui.theme.MechaFerrisTheme
 
@@ -143,34 +146,50 @@ fun Float.format(digits: Int) = "%07.${digits}f".format(this)
 @Composable
 fun CalibratingView(viewModel: CalibratingViewModel) {
     val coroutineScope = rememberCoroutineScope()
+    val localContext = LocalContext.current
+    val calibrationData = localContext.calibrationDataStore.data.collectAsStateWithLifecycle(null)
+    val currentCalibrationData by rememberSaveable {
+        // We want to snapshot the stored data and use it as the initial value. It should NOT
+        // be derived!
+        mutableStateOf(calibrationData.value)
+    }
+    val pulse = rememberSaveable {
+        viewModel.pulse
+    }
+    var enabled by rememberSaveable {
+        viewModel.enabled
+    }
+    val leg = rememberSaveable {
+        viewModel.leg
+    }
+    val joint = rememberSaveable {
+        viewModel.joint
+    }
+    val kind = rememberSaveable {
+        viewModel.kind
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(12.dp)
     ) {
-        var pulse by rememberSaveable {
-            viewModel.pulse
-        }
-        var enabled by rememberSaveable {
-            viewModel.enabled
-        }
-        val leg = rememberSaveable {
-            viewModel.leg
-        }
-        val joint = rememberSaveable {
-            viewModel.joint
-        }
-        val kind = rememberSaveable {
-            viewModel.kind
-        }
 
         Spinner(options = CalibratingViewModel.LEG_OPTIONS, label = "Leg", selected = leg.intValue,
             onSelected = {
                 leg.intValue = it
             })
         Spacer(modifier = Modifier.height(12.dp))
-        Spinner(options = CalibratingViewModel.JOINT_OPTIONS, label = "Joint", selected = joint.intValue,
+        Spinner(options = CalibratingViewModel.JOINT_OPTIONS,
+            label = "Joint",
+            selected = joint.intValue,
             onSelected = {
+                // Need to correct for Tibia having a HOME position
+                if (joint.intValue != Joint.TIBIA_VALUE && it == Joint.TIBIA_VALUE) {
+                    kind.intValue = kind.intValue + 1
+                } else if (joint.intValue == Joint.TIBIA_VALUE && it != Joint.TIBIA_VALUE) {
+                    kind.intValue = maxOf(0, kind.intValue - 1)
+                }
                 joint.intValue = it
             })
         Spacer(modifier = Modifier.height(12.dp))
@@ -183,12 +202,12 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                text = "Pulse: ${pulse.format(2)}",
+                text = "Pulse: ${pulse.floatValue.format(2)}",
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Slider(value = pulse, onValueChange = { pulse = it }, valueRange = 400.0f..2700.0f)
+            Slider(value = pulse.floatValue, onValueChange = { pulse.floatValue = it }, valueRange = 400.0f..2700.0f)
         }
         Row(
             horizontalArrangement = Arrangement.Start,
@@ -218,25 +237,48 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
         }
         Spacer(modifier = Modifier.weight(1f))
         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+            val context: Context = LocalContext.current
             Button(
                 modifier = Modifier.weight(0.75f),
                 onClick = {
-
+                    coroutineScope.launch {
+                        context.calibrationDataStore.updateData { calibrations ->
+                            // 3 or 4 kinds per joint, can be calculated with joint*3 + kind because
+                            // the first 2 joints have 3 elements. The last joint has 4, but that's
+                            // not needed to find the offset for the kind. We do take it into account
+                            // when looking up the offset based on the leg though: 3 + 3 + 4 = 10
+                            // kinds per leg.
+                            val index = kind.intValue + joint.intValue * 3 + leg.intValue * 10
+                            Log.i(
+                                "CalibratingView",
+                                "Storing index $index from ${kind.intValue}, ${joint.intValue}, ${leg.intValue}"
+                            )
+                            calibrations.toBuilder().setCalibrations(
+                                index,
+                                ServoCalibration.newBuilder().setLeg(leg.intValue)
+                                    .setJointValue(joint.intValue).setKindValue(kind.intValue)
+                                    .setPulse(pulse.floatValue)
+                                    .build()
+                            ).build()
+                        }
+                        Log.i("CalibratingView", "Stored calibration?")
+                    }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Text(text = "Save", color = MaterialTheme.colorScheme.onPrimary)
             }
             Spacer(modifier = Modifier.width(12.dp))
-            val context: Context = LocalContext.current
             Button(
                 modifier = Modifier.weight(0.75f),
                 onClick = {
-                    coroutineScope.launch {
-                        context.calibrationDataStore.data.collect {
-                            Log.i("CalibratingView", "Calibration data: $it")
-                        }
-                    }
+                    val index = kind.intValue + joint.intValue * 3 + leg.intValue * 10
+                    Log.i(
+                        "CalibratingView",
+                        "Loading index $index from ${kind.intValue}, ${joint.intValue}, ${leg.intValue}"
+                    )
+                    val calibration = calibrationData.value?.getCalibrations(index)
+                    pulse.floatValue = calibration?.pulse ?: 1500.0f
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
             ) {

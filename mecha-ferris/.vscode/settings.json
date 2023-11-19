@@ -5,5 +5,5 @@
     "rust-analyzer.cargo.features": [
         "defmt",
         "debug-current"
-    ]
+    ],
 }

@@ -275,10 +275,13 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
         while let Some(event) = i2c.next() {
             match event {
                 I2CEvent::Start | I2CEvent::Restart => {}
-                I2CEvent::TransferRead => match self.i2c_req {
-                    Some(op) => self.process_read_op(i2c, state, op),
-                    None => log::warn!("missing request on read"),
-                },
+                I2CEvent::TransferRead => {
+                    if let Some(op) = self.i2c_req {
+                        self.process_read_op(i2c, state, op);
+                    } else {
+                        log::warn!("missing request on read");
+                    }
+                }
                 I2CEvent::TransferWrite => match self.i2c_req {
                     Some(op) => updated |= self.process_op(i2c, state, op),
                     None => {

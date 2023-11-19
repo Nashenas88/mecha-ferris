@@ -4,11 +4,14 @@
 use communication::COMMS_ADDR;
 use data::{calibrating_calibrations, make_joints};
 use homing::Homing;
+#[cfg(feature = "debug-current")]
 use mecha_ferris::analog::read_external_current;
 use mecha_ferris::comms::CommsManager;
 use mecha_ferris::debouncer::Debouncer;
 use mecha_ferris::joint::Joint;
 use mecha_ferris::{log, State};
+#[cfg(feature = "debug-current")]
+use pimoroni_servo2040::hal::adc::AdcPin;
 
 use core::iter::once;
 #[cfg(feature = "defmt")]
@@ -29,14 +32,19 @@ use panic_halt as _;
 use panic_probe as _;
 use pimoroni_servo2040::hal::clocks::SystemClock;
 use pimoroni_servo2040::hal::dma::{Channel, ChannelIndex, DMAExt, CH0, CH1};
-use pimoroni_servo2040::hal::gpio::{Error as GpioError, FunctionConfig, FunctionPio0};
+#[cfg(feature = "defmt")]
+use pimoroni_servo2040::hal::gpio::FunctionSioOutput;
+use pimoroni_servo2040::hal::gpio::{
+    Function, FunctionI2C, FunctionPio0, FunctionPio1, Pin, PinId, PullNone, PullType, PullUp,
+    ValidFunction,
+};
 use pimoroni_servo2040::hal::pio::{PIOExt, StateMachineIndex, UninitStateMachine, PIO, SM0};
 use pimoroni_servo2040::hal::rom_data::float_funcs;
 use pimoroni_servo2040::hal::timer::Instant;
 use pimoroni_servo2040::hal::{self, pac, Clock, Timer};
 use pimoroni_servo2040::pac::{interrupt, PIO0};
 use servo_pio::calibration::{AngularCalibration, CalibrationData, Point};
-use servo_pio::pwm_cluster::{dma_interrupt, GlobalState, GlobalStates, Handler};
+use servo_pio::pwm_cluster::{dma_interrupt, DynPin, GlobalState, GlobalStates, Handler};
 use servo_pio::servo_cluster::{
     ServoCluster, ServoClusterBuilder, ServoClusterBuilderError, ServoData,
 };
@@ -112,6 +120,16 @@ impl ExpensiveMath<f32> for RomFuncs {
     }
 }
 
+/// Reconfigure servo pins so they can be used by the servo cluster.
+fn reconfigure<I, F, P>(pin: Pin<I, F, P>) -> DynPin<FunctionPio0>
+where
+    I: PinId + ValidFunction<FunctionPio0>,
+    F: Function,
+    P: PullType,
+{
+    pin.reconfigure::<FunctionPio0, PullNone>().into_dyn_pin()
+}
+
 #[pimoroni_servo2040::entry]
 fn main() -> ! {
     let mut pac = pac::Peripherals::take().unwrap();
@@ -141,75 +159,75 @@ fn main() -> ! {
     let calibrations = data::calibrations();
     let servo_pins: [_; NUM_SERVOS] = [
         ServoData {
-            pin: pins.servo1.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo1),
             calibration: calibrations[0][0].cal,
         },
         ServoData {
-            pin: pins.servo2.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo2),
             calibration: calibrations[0][1].cal,
         },
         ServoData {
-            pin: pins.servo3.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo3),
             calibration: calibrations[0][2].cal,
         },
         ServoData {
-            pin: pins.servo4.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo4),
             calibration: calibrations[1][0].cal,
         },
         ServoData {
-            pin: pins.servo5.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo5),
             calibration: calibrations[1][1].cal,
         },
         ServoData {
-            pin: pins.servo6.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo6),
             calibration: calibrations[1][2].cal,
         },
         ServoData {
-            pin: pins.servo7.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo7),
             calibration: calibrations[2][0].cal,
         },
         ServoData {
-            pin: pins.servo8.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo8),
             calibration: calibrations[2][1].cal,
         },
         ServoData {
-            pin: pins.servo9.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo9),
             calibration: calibrations[2][2].cal,
         },
         ServoData {
-            pin: pins.servo10.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo10),
             calibration: calibrations[3][0].cal,
         },
         ServoData {
-            pin: pins.servo11.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo11),
             calibration: calibrations[3][1].cal,
         },
         ServoData {
-            pin: pins.servo12.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo12),
             calibration: calibrations[3][2].cal,
         },
         ServoData {
-            pin: pins.servo13.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo13),
             calibration: calibrations[4][0].cal,
         },
         ServoData {
-            pin: pins.servo14.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo14),
             calibration: calibrations[4][1].cal,
         },
         ServoData {
-            pin: pins.servo15.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo15),
             calibration: calibrations[4][2].cal,
         },
         ServoData {
-            pin: pins.servo16.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo16),
             calibration: calibrations[5][0].cal,
         },
         ServoData {
-            pin: pins.servo17.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo17),
             calibration: calibrations[5][1].cal,
         },
         ServoData {
-            pin: pins.servo18.into_mode::<FunctionPio0>().into(),
+            pin: reconfigure(pins.servo18),
             calibration: calibrations[5][2].cal,
         },
     ];
@@ -221,11 +239,11 @@ fn main() -> ! {
     let dma = pac.DMA.split(&mut pac.RESETS);
 
     // Configure the Timer peripheral in count-down mode.
-    let timer = hal::Timer::new(pac.TIMER, &mut pac.RESETS);
+    let timer = hal::Timer::new(pac.TIMER, &mut pac.RESETS, &clocks);
     let mut count_down = timer.count_down();
 
     let mut ws = Ws2812Direct::new(
-        pins.led_data.into_mode(),
+        pins.led_data.reconfigure::<FunctionPio1, PullNone>(),
         &mut pio1,
         sm10,
         clocks.peripheral_clock.freq(),
@@ -233,8 +251,8 @@ fn main() -> ! {
 
     let mut i2c_peripheral = hal::i2c::I2C::new_peripheral_event_iterator(
         pac.I2C0,
-        pins.sda.into_mode(),
-        pins.scl.into_mode(),
+        pins.sda.reconfigure::<FunctionI2C, PullUp>(),
+        pins.scl.reconfigure::<FunctionI2C, PullUp>(),
         &mut pac.RESETS,
         COMMS_ADDR,
     );
@@ -247,7 +265,9 @@ fn main() -> ! {
         (dma.ch0, dma.ch1),
         servo_pins,
         #[cfg(feature = "debug_pio")]
-        pins.scl.into_mode::<FunctionPio0>().into(),
+        pins.scl
+            .reconfigure::<FunctionPio0, PullNone>()
+            .into_dyn_pin(),
         clocks.system_clock,
         unsafe { &mut STATE1 },
     ) {
@@ -293,30 +313,33 @@ fn main() -> ! {
 
     count_down.start(1.secs());
     let _ = nb::block!(count_down.wait());
+    #[cfg(any(feature = "defmt", feature = "debug-current"))]
     let mut adc = hal::Adc::new(pac.ADC, &mut pac.RESETS);
     #[cfg(feature = "defmt")]
     {
         let sensor_delay = 1.millis();
 
         let mut analog_mux = AnalogMux::new(
-            pins.adc_addr_0.into_mode(),
-            pins.adc_addr_1.into_mode(),
-            pins.adc_addr_2.into_mode(),
+            pins.adc_addr_0.reconfigure::<FunctionSioOutput, PullNone>(),
+            pins.adc_addr_1.reconfigure::<FunctionSioOutput, PullNone>(),
+            pins.adc_addr_2.reconfigure::<FunctionSioOutput, PullNone>(),
             FlexibleInput::from(pins.shared_adc.into_floating_input()),
         );
 
-        let mut analog = analog_mux.reader::<CurrentSensor>(&mut count_down);
-        let mut current = 0.0;
-        for _ in 0..SAMPLES {
-            current += analog.read_current(&mut adc);
-            count_down.start(sensor_delay);
-            let _ = nb::block!(count_down.wait());
-        }
-        current /= SAMPLES as f32;
-        log::info!("servos pulling {}A", current);
+        analog_mux.with_reader::<CurrentSensor, _>(&mut count_down, |count_down, mut analog| {
+            let mut current = 0.0;
+            for _ in 0..SAMPLES {
+                current += analog.read_current(&mut adc);
+                count_down.start(sensor_delay);
+                let _ = nb::block!(count_down.wait());
+            }
+            current /= SAMPLES as f32;
+            log::info!("servos pulling {}A", current);
+        });
     }
 
-    let mut external_voltage_sense = pins.adc0.into_floating_input();
+    #[cfg(feature = "debug-current")]
+    let mut external_voltage_sense = AdcPin::new(pins.adc0.into_floating_input());
 
     let mut time = 0.0;
     let mut step_delay = walking.duration() as f32;
@@ -369,6 +392,7 @@ fn main() -> ! {
             let _ = ws.write(brightness([color; 6].into_iter(), LED_BRIGHTNESS));
         }
 
+        // TODO Don't update time if paused?
         let diff = (now - last_update).to_millis();
         time += diff as f32 / 1000.0;
 
@@ -646,7 +670,6 @@ impl CalibrationData for Calibrating {
 
 #[cfg_attr(feature = "defmt", derive(Format))]
 enum BuildError {
-    Gpio(GpioError),
     Build(ServoClusterBuilderError),
 }
 
@@ -654,7 +677,7 @@ fn build_servo_cluster<C1, C2, P, SM>(
     pio: &mut PIO<P>,
     sm: UninitStateMachine<(P, SM)>,
     dma_channels: (Channel<C1>, Channel<C2>),
-    servo_data: [ServoData<AngularCalibration>; NUM_SERVOS],
+    servo_data: [ServoData<AngularCalibration, FunctionPio0>; NUM_SERVOS],
     #[cfg(feature = "debug_pio")] side_set_pin: DynPin,
     system_clock: SystemClock,
     state: &'static mut Option<GlobalState<C1, C2, P, SM>>,
@@ -662,7 +685,7 @@ fn build_servo_cluster<C1, C2, P, SM>(
 where
     C1: ChannelIndex,
     C2: ChannelIndex,
-    P: PIOExt + FunctionConfig,
+    P: PIOExt<PinFunction = FunctionPio0>,
     SM: StateMachineIndex,
 {
     #[allow(unused_mut)]
@@ -673,6 +696,7 @@ where
         C2,
         P,
         SM,
+        FunctionPio0,
         NUM_SERVOS,
         NUM_CHANNELS,
     > = ServoCluster::<NUM_SERVOS, P, SM, AngularCalibration>::builder(
@@ -681,13 +705,10 @@ where
         dma_channels,
         unsafe { &mut GLOBALS },
     )
-    .pins_and_calibration(servo_data)
-    .map_err(BuildError::Gpio)?;
+    .pins_and_calibration(servo_data);
     #[cfg(feature = "debug_pio")]
     {
-        builder = builder
-            .side_set_pin(side_set_pin)
-            .map_err(BuildError::Gpio)?;
+        builder = builder.side_set_pin(side_set_pin);
     }
     builder
         .pwm_frequency(50.0)

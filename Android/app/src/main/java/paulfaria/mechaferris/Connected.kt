@@ -7,9 +7,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -40,6 +38,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -51,9 +50,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import paulfaria.mechaferris.Constants.Companion.DEVICE_ADDRESS_EXTRA
 import paulfaria.mechaferris.Constants.Companion.DEVICE_NAME_EXTRA
@@ -78,76 +80,36 @@ class DialogViewModel : ViewModel() {
 }
 
 class Connected : ComponentActivity() {
+    private val connectedViewModel by viewModels<ConnectedViewModel> {
+        viewModelFactory {
+            initializer {
+                ConnectedViewModel(bleServiceData)
+            }
+        }
+    }
 
     private val dialogViewModel: DialogViewModel by viewModels()
-    private val connectedViewModel: ConnectedViewModel by viewModels()
     private val defaultScope = CoroutineScope(Dispatchers.Default)
-    private val mainHandler = Handler(Looper.getMainLooper())
     private var bleServiceConn: MFServiceConn? = null
-    private var bleServiceData: BleService.BluetoothServiceBinder? by mutableStateOf(null)
-
-    private val batteryChangeNotifications = Channel<UInt>()
-    private val stateMachineChangeNotifications = Channel<StateMachine>()
-    private val animationFactorChangeNotifications = Channel<Float>()
-    private val angularVelocityChangeNotifications = Channel<Float>()
-    private val motionVectorChangeNotifications = Channel<Vector3>()
-    private val bodyTranslationChangeNotifications = Channel<Translation>()
-    private val bodyRotationChangeNotifications = Channel<Quaternion>()
-    private val legRadiusChangeNotifications = Channel<Float>()
-    private val batteryUpdateIntervalMsChangeNotifications = Channel<UInt>()
-    private val getCalibrationDatumChangeNotifications = Channel<CalibrationDatum>()
-    private val setCalibrationResultChangeNotifications = Channel<SetResult>()
+    private var bleServiceData: MutableStateFlow<BleService.BluetoothServiceBinder?> =
+        MutableStateFlow(null)
 
     private inner class MFServiceConn : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
             if (BuildConfig.DEBUG && BleService::class.java.name != name?.className) {
-                error("Connected to unknown service")
+                error("Connected to unknown service: ${name?.className}")
             } else {
-                bleServiceData = service as BleService.BluetoothServiceBinder
-                bleServiceData?.let { bleServiceData ->
-                    bleServiceData.setBatteryChangedChannel(batteryChangeNotifications)
-                    bleServiceData.setStateMachineChangedChannel(stateMachineChangeNotifications)
-                    bleServiceData.setAnimationFactorChangedChannel(animationFactorChangeNotifications)
-                    bleServiceData.setAngularVelocityChangedChannel(
-                        angularVelocityChangeNotifications
-                    )
-                    bleServiceData.setMotionVectorChangedChannel(motionVectorChangeNotifications)
-                    bleServiceData.setBodyTranslationChangedChannel(
-                        bodyTranslationChangeNotifications
-                    )
-                    bleServiceData.setBodyRotationChangedChannel(bodyRotationChangeNotifications)
-                    bleServiceData.setLegRadiusChangedChannel(legRadiusChangeNotifications)
-                    bleServiceData.setBatteryUpdateIntervalMsChangedChannel(
-                        batteryUpdateIntervalMsChangeNotifications
-                    )
-                    bleServiceData.setGetCalibrationResultChangedChannel(
-                        getCalibrationDatumChangeNotifications
-                    )
-                    bleServiceData.setSetCalibrationResultChangedChannel(
-                        setCalibrationResultChangeNotifications
-                    )
-                    connectedViewModel.setBleServiceData(bleServiceData)
+                bleServiceData.value = service as BleService.BluetoothServiceBinder
+                bleServiceData.value?.let { bleServiceData ->
                     defaultScope.launch {
                         try {
                             connectedViewModel.deviceAddress?.let {
                                 bleServiceData.sync(it, true)
-                                connectedViewModel.batteryLevel = bleServiceData.getBatteryLevel(it)
-                                connectedViewModel.stateMachine = bleServiceData.getStateMachine(it)
-                                connectedViewModel.animationFactor = bleServiceData.getAnimationFactor(it)
-                                connectedViewModel.angularVelocity =
-                                    bleServiceData.getAngularVelocity(it)
-                                connectedViewModel.motionVector = bleServiceData.getMotionVector(it)
-                                connectedViewModel.bodyTranslation =
-                                    bleServiceData.getBodyTranslation(it)
-                                connectedViewModel.bodyRotation = bleServiceData.getBodyRotation(it)
-                                connectedViewModel.legRadius = bleServiceData.getLegRadius(it)
-                                connectedViewModel.batteryUpdateIntervalMs =
-                                    bleServiceData.getBatteryUpdateIntervalMs(it)
 
                                 // sync calibration data?
-                                connectedViewModel.calibratingViewModel.let {
-                                    cvm ->
-                                    bleServiceData.requestCalibrationData(it,
+                                connectedViewModel.calibratingViewModel.let { cvm ->
+                                    bleServiceData.requestCalibrationData(
+                                        it,
                                         cvm.leg.intValue.toUByte(),
                                         cvm.joint.intValue.toUByte(),
                                         cvm.kind.intValue.toUByte(),
@@ -167,7 +129,7 @@ class Connected : ComponentActivity() {
             if (BuildConfig.DEBUG && BleService::class.java.name != name?.className) {
                 error("Disconnected from unknown service")
             } else {
-                bleServiceData = null
+                bleServiceData.value = null
                 dialogViewModel.onDisconnected()
                 finish()
             }
@@ -181,94 +143,6 @@ class Connected : ComponentActivity() {
         val address = intent.getStringExtra(DEVICE_ADDRESS_EXTRA)
         connectedViewModel.deviceName = name
         connectedViewModel.deviceAddress = address
-
-        bleServiceData?.let {
-            connectedViewModel.setBleServiceData(it)
-        }
-
-        defaultScope.launch {
-            for (update in batteryChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.batteryLevel = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in stateMachineChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.stateMachine = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in animationFactorChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.animationFactor = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in angularVelocityChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.angularVelocity = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in motionVectorChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.motionVector = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in bodyTranslationChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.bodyTranslation = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in bodyRotationChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.bodyRotation = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in legRadiusChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.legRadius = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in batteryUpdateIntervalMsChangeNotifications) {
-                mainHandler.run {
-                    connectedViewModel.batteryUpdateIntervalMs = update
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in getCalibrationDatumChangeNotifications) {
-                mainHandler.run {
-                    // TODO: Sync results to storage
-                    // TODO: turn off any loading indicator
-                    Log.i("Connected", "getCalibrationDatumChangeNotifications: $update")
-                    connectedViewModel.calibratingViewModel.pulse.floatValue = update.pulse
-                }
-            }
-        }
-        defaultScope.launch {
-            for (update in setCalibrationResultChangeNotifications) {
-                mainHandler.run {
-                    // TODO: Sync results to storage?
-                    // TODO: turn off any loading indicator
-                    // TODO: Show error?
-                    Log.i("Connected", "setCalibrationResultChangeNotifications: $update")
-                }
-            }
-        }
 
         setContent {
             val coroutineScope = rememberCoroutineScope()
@@ -294,7 +168,9 @@ class Connected : ComponentActivity() {
                 0
             )
         ) {
-            bleServiceConn = latestServiceConn
+            defaultScope.launch {
+                bleServiceConn = latestServiceConn
+            }
         }
     }
 
@@ -317,6 +193,18 @@ fun ConnectedView(
     viewModel: ConnectedViewModel
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+
+    val deviceName = remember { viewModel.deviceName }
+    val deviceAddress = remember { viewModel.deviceAddress }
+    val batteryLevel by viewModel.batteryLevelFlow.collectAsStateWithLifecycle()
+    val stateMachine by viewModel.stateMachineFlow.collectAsStateWithLifecycle()
+    val animationFactor by viewModel.animationFactorFlow.collectAsStateWithLifecycle()
+    val angularVelocity by viewModel.angularVelocityFlow.collectAsStateWithLifecycle()
+    val motionVector by viewModel.motionVectorFlow.collectAsStateWithLifecycle()
+    val bodyTranslation by viewModel.bodyTranslationFlow.collectAsStateWithLifecycle()
+    val bodyRotation by viewModel.bodyRotationFlow.collectAsStateWithLifecycle()
+    val legRadius by viewModel.legRadiusFlow.collectAsStateWithLifecycle()
+
     val context = LocalContext.current
     if (showDisconnected) {
         AlertDialog(
@@ -452,7 +340,7 @@ fun ConnectedView(
                             viewModel.sync(context)
                         }
                     }) {
-                        PlayPauseIcon(stateMachine = viewModel.stateMachine)
+                        PlayPauseIcon(stateMachine = stateMachine)
                     }
                     Spacer(Modifier.size(12.dp))
                     CircleButton(onClick = {
@@ -485,7 +373,18 @@ fun ConnectedView(
         ) {
             when (viewModel.scaffoldState) {
                 ScaffoldState.Home -> {
-                    HomeView(state = viewModel)
+                    HomeView(
+                        deviceName = deviceName,
+                        deviceAddress = deviceAddress,
+                        batteryLevel = batteryLevel,
+                        stateMachine = stateMachine,
+                        animationFactor = animationFactor,
+                        angularVelocity = angularVelocity,
+                        motionVector = motionVector,
+                        bodyTranslation = bodyTranslation,
+                        bodyRotation = bodyRotation,
+                        legRadius = legRadius
+                    )
                 }
 
                 ScaffoldState.Calibrating -> {

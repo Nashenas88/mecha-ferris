@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-defmt = { version = "0.3.0", optional = true }
+defmt = { version = "0.3", optional = true }
 state = { path = "../state" }
 nalgebra = { version = "0.32.2", default-features = false, features = ["libm"] }
 

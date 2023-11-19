@@ -14,20 +14,36 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import paulfaria.mechaferris.ConnectedViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import paulfaria.mechaferris.Quaternion
 import paulfaria.mechaferris.R
 import paulfaria.mechaferris.StateMachine
 import paulfaria.mechaferris.Translation
+import paulfaria.mechaferris.Vector3
 import paulfaria.mechaferris.toPrettyString
 import paulfaria.mechaferris.ui.theme.MechaFerrisTheme
 
+@OptIn(ExperimentalUnsignedTypes::class)
 @Composable
-fun HomeView(state: ConnectedViewModel) {
+fun HomeView(
+    deviceName: String?,
+    deviceAddress: String?,
+    batteryLevel: UInt?,
+    stateMachine: StateMachine?,
+    animationFactor: Float?,
+    angularVelocity: Float?,
+    motionVector: Vector3?,
+    bodyTranslation: Translation?,
+    bodyRotation: Quaternion?,
+    legRadius: Float?,) {
     Row(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
@@ -38,40 +54,40 @@ fun HomeView(state: ConnectedViewModel) {
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
-            HomeViewRow(label = "Device Name", value = state.deviceName ?: "Unknown name")
+            HomeViewRow(label = "Device Name", value = deviceName ?: "Unknown name")
             HomeViewRow(
                 label = "Device Address",
-                value = state.deviceAddress ?: "Unknown address"
+                value = deviceAddress ?: "Unknown address"
             )
             HomeViewRow(label = "Battery Level") {
-                BatteryIcon(batteryLevel = state.batteryLevel)
+                BatteryIcon(batteryLevel = batteryLevel)
             }
             HomeViewRow(
                 label = "State Machine",
-                value = state.stateMachine?.toString() ?: "Unknown state"
+                value = stateMachine?.toString() ?: "Unknown state"
             )
             HomeViewRow(
                 label = "Animation Factor",
-                value = state.animationFactor?.let { "${state.animationFactor} m/s" } ?: "Unknown")
+                value = animationFactor?.let { "$animationFactor m/s" } ?: "Unknown")
             HomeViewRow(
                 label = "Angular Velocity",
-                value = state.angularVelocity?.let { "${state.angularVelocity} rad/s" }
+                value = angularVelocity?.let { "$angularVelocity rad/s" }
                     ?: "Unknown")
             HomeViewRow(
                 label = "Motion Vector",
-                value = state.motionVector?.toPrettyString() ?: "Unknown"
+                value = motionVector?.toPrettyString() ?: "Unknown"
             )
             HomeViewRow(
                 label = "Body Translation",
-                value = state.bodyTranslation?.toPrettyString() ?: "Unknown"
+                value = bodyTranslation?.toPrettyString() ?: "Unknown"
             )
             HomeViewRow(
                 label = "Body Rotation",
-                value = state.bodyRotation?.toPrettyString() ?: "Unknown"
+                value = bodyRotation?.toPrettyString() ?: "Unknown"
             )
             HomeViewRow(
                 label = "Leg Radius",
-                value = state.legRadius?.let { "${state.legRadius} m" } ?: "Unknown")
+                value = legRadius?.let { "$legRadius m" } ?: "Unknown")
         }
     }
 }
@@ -132,15 +148,55 @@ fun HomeViewRow(
     }
 }
 
+@OptIn(ExperimentalUnsignedTypes::class)
 @Preview
 @Composable
 fun HomeViewPreview() {
-    val state = ConnectedViewModel()
-    state.batteryLevel = 25u
-    state.stateMachine = StateMachine.PAUSED
-    state.legRadius = 100f
-    state.bodyTranslation = Translation(0f, 75f, 0f)
+    val batteryLevel by flow {
+        val delayMs = 100L
+        while (true) {
+            for (i in 0..100) {
+                delay(delayMs)
+                emit(i.toUInt())
+            }
+            for (i in 100 downTo 0) {
+                delay(delayMs)
+                emit(i.toUInt())
+            }
+        }
+    }.collectAsStateWithLifecycle(initialValue = 0.toUInt())
+
     MechaFerrisTheme(darkTheme = true) {
-        HomeView(state = state)
+        HomeView(
+            deviceName = "Mecha Ferris",
+            deviceAddress = "00:00:00:00:00:00",
+            batteryLevel = batteryLevel,
+            stateMachine = StateMachine.PAUSED,
+            animationFactor = 1.0f,
+            angularVelocity = 0.0f,
+            motionVector = Vector3(0.0f, 0.0f, 0.0f),
+            bodyTranslation = Translation(0.0f, 0.0f, 0.0f),
+            bodyRotation = Quaternion(0.0f, 0.0f, 0.0f, 0.0f),
+            legRadius = 100.0f
+        )
+    }
+}
+
+@Preview
+@Composable
+fun NullHomeViewPreview() {
+    MechaFerrisTheme(darkTheme = true) {
+        HomeView(
+            deviceName = null,
+            deviceAddress = null,
+            batteryLevel = null,
+            stateMachine = null,
+            animationFactor = null,
+            angularVelocity = null,
+            motionVector = null,
+            bodyTranslation = null,
+            bodyRotation = null,
+            legRadius = null,
+        )
     }
 }

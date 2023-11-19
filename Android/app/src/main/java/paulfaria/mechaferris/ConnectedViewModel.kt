@@ -9,36 +9,112 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapConcat
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.stateIn
 import paulfaria.mechaferris.ui.calibrating.CalibratingViewModel
 
-class ConnectedViewModel : ViewModel() {
-    private var bleServiceData: BleService.BluetoothServiceBinder? = null
+@OptIn(FlowPreview::class)
+fun <T, U> Flow<T?>.flatMapNullable(transform: (T) -> Flow<U>): Flow<U?> {
+    return this.flatMapConcat { it?.let { transform(it) } ?: flowOf(null) }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?> = emptyFlow()) :
+    ViewModel() {
     var deviceName: String? = null
     var deviceAddress: String? = null
-    var batteryLevel: UInt? by mutableStateOf(null)
-    var awaitingBatteryLevel: Boolean = false
-    var stateMachine: StateMachine? by mutableStateOf(null)
-    var awaitingStateMachine: Boolean = false
+
+    private val bleServiceDataState =
+        bleServiceData.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+
+    val batteryLevelFlow: StateFlow<UInt?> = bleServiceData.flatMapNullable { it.batteryFlow }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+
+    private val _stateMachineChannel = Channel<StateMachine?>()
+    var stateMachineFlow: StateFlow<StateMachine?> = merge(_stateMachineChannel.receiveAsFlow(),
+        bleServiceData.flatMapNullable { it.stateMachineFlow }).stateIn(
+        viewModelScope, SharingStarted.Lazily, null
+    )
     private var previousStateMachine: StateMachine? = null
-    var animationFactor: Float? by mutableStateOf(null)
-    var awaitingAnimationFactor: Boolean = false
-    var angularVelocity: Float? by mutableStateOf(null)
-    var awaitingAngularVelocity: Boolean = false
-    var motionVector: Vector3? by mutableStateOf(null)
-    var awaitingMotionVector: Boolean = false
-    var bodyTranslation: Translation? by mutableStateOf(null)
-    var awaitingBodyTranslation: Boolean = false
-    var bodyRotation: Quaternion? by mutableStateOf(null)
-    var awaitingBodyRotation: Boolean = false
-    var legRadius: Float? by mutableStateOf(null)
-    var awaitingLegRadius: Boolean = false
-    var batteryUpdateIntervalMs: UInt? by mutableStateOf(null)
+
+    private val _animationFactorChannel = Channel<Float?>()
+    var animationFactorFlow: StateFlow<Float?> =
+        merge(_animationFactorChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
+            it.animationFactorFlow
+        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    private val _angularVelocityChannel = Channel<Float?>()
+    var angularVelocityFlow: StateFlow<Float?> =
+        merge(_angularVelocityChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
+            it.angularVelocityFlow
+        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    private val _motionVectorChannel = Channel<Vector3?>()
+    var motionVectorFlow: StateFlow<Vector3?> =
+        merge(_motionVectorChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
+            it.motionVectorFlow
+        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    private val _bodyTranslationChannel = Channel<Translation?>()
+    var bodyTranslationFlow: StateFlow<Translation?> =
+        merge(_bodyTranslationChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
+            it.bodyTranslationFlow
+        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+
+    private val _bodyRotationChannel = Channel<Quaternion?>()
+    var bodyRotationFlow: StateFlow<Quaternion?> = merge(_bodyRotationChannel.receiveAsFlow(),
+        bleServiceData.flatMapNullable { it.bodyRotationFlow }).stateIn(
+        viewModelScope, SharingStarted.Lazily, null
+    )
+
+    private val _legRadiusChannel = Channel<Float?>()
+    var legRadiusFlow: StateFlow<Float?> = merge(_legRadiusChannel.receiveAsFlow(),
+        bleServiceData.flatMapNullable { it.legRadiusFlow }).stateIn(
+        viewModelScope, SharingStarted.Lazily, null
+    )
+
+    private val _batteryUpdateIntervalMsChannel = Channel<UInt?>()
+    var batteryUpdateIntervalMsFlow: StateFlow<UInt?> =
+        merge(
+            _batteryUpdateIntervalMsChannel.receiveAsFlow(),
+            bleServiceData.flatMapNullable { it.batteryUpdateIntervalMsFlow }).stateIn(
+            viewModelScope, SharingStarted.Lazily, null
+        )
+
     var scaffoldState: ScaffoldState by mutableStateOf(ScaffoldState.Home)
     val calibratingViewModel = CalibratingViewModel()
+    val height: StateFlow<Float> = bodyTranslationFlow.map {
+        it?.y ?: 75.0f
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 75.0f)
 
-    fun setBleServiceData(bleServiceData: BleService.BluetoothServiceBinder) {
-        this.bleServiceData = bleServiceData
-    }
+    // for (update in getCalibrationDatumChangeNotifications) {
+    //     mainHandler.run {
+    //         // TODO: Sync results to storage
+    //         // TODO: turn off any loading indicator
+    //         Log.i("Connected", "getCalibrationDatumChangeNotifications: $update")
+    //         connectedViewModel.calibratingViewModel.pulse.floatValue = update.pulse
+    //     }
+    // }
+    // for (update in setCalibrationResultChangeNotifications) {
+    //     mainHandler.run {
+    //         // TODO: Sync results to storage?
+    //         // TODO: turn off any loading indicator
+    //         // TODO: Show error?
+    //         Log.i("Connected", "setCalibrationResultChangeNotifications: $update")
+    //     }
+    // }
 
     suspend fun onClickAction(context: Context, scaffoldState: ScaffoldState) {
         when (scaffoldState) {
@@ -69,9 +145,13 @@ class ConnectedViewModel : ViewModel() {
         onUpdate: () -> Unit = {},
     ) {
         try {
-            if (deviceAddress?.let { bleServiceData?.setStateMachine(it, stateMachine) } != null) {
+            if (deviceAddress?.let {
+                    bleServiceDataState.value?.setStateMachine(
+                        it, stateMachine
+                    )
+                } != null) {
                 onUpdate()
-                this.stateMachine = stateMachine
+                _stateMachineChannel.send(stateMachine)
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Failed to set new state: ${e.message}", Toast.LENGTH_LONG)
@@ -81,122 +161,114 @@ class ConnectedViewModel : ViewModel() {
 
     suspend fun sync(context: Context, all: Boolean = false) {
         try {
-            if (deviceAddress?.let { bleServiceData?.sync(it, all) } != null) {
-                Toast.makeText(context, "Synced", Toast.LENGTH_LONG)
-                    .show()
+            if (deviceAddress?.let { bleServiceDataState.value?.sync(it, all) } != null) {
+                Toast.makeText(context, "Synced", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(context, "Failed to sync: ${e.message}", Toast.LENGTH_LONG)
-                .show()
+            Toast.makeText(context, "Failed to sync: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
     suspend fun setAnimationFactor(
-        context: Context,
-        animationFactor: Float
+        context: Context, animationFactor: Float
     ) {
         try {
-            if (deviceAddress?.let { bleServiceData?.setAnimationFactor(it, animationFactor) } != null) {
-                this.animationFactor = animationFactor
+            if (deviceAddress?.let {
+                    bleServiceDataState.value?.setAnimationFactor(
+                        it, animationFactor
+                    )
+                } != null) {
+                _animationFactorChannel.send(animationFactor)
             }
         } catch (e: Exception) {
-            Toast.makeText(context, "Failed to set new animation factor: ${e.message}", Toast.LENGTH_LONG)
-                .show()
+            Toast.makeText(
+                context, "Failed to set new animation factor: ${e.message}", Toast.LENGTH_LONG
+            ).show()
         }
     }
 
     suspend fun setAngularVelocity(
-        context: Context,
-        angularVelocity: Float
+        context: Context, angularVelocity: Float
     ) {
         try {
             if (deviceAddress?.let {
-                    bleServiceData?.setAngularVelocity(
-                        it,
-                        angularVelocity
+                    bleServiceDataState.value?.setAngularVelocity(
+                        it, angularVelocity
                     )
                 } != null) {
-                this.angularVelocity = angularVelocity
+                _angularVelocityChannel.send(angularVelocity)
             }
         } catch (e: Exception) {
             Toast.makeText(
-                context,
-                "Failed to set new angular velocity: ${e.message}",
-                Toast.LENGTH_LONG
-            )
-                .show()
+                context, "Failed to set new angular velocity: ${e.message}", Toast.LENGTH_LONG
+            ).show()
         }
     }
 
     suspend fun setMotionVector(
-        context: Context,
-        motionVector: Vector3
+        context: Context, motionVector: Vector3
     ) {
         try {
-            if (deviceAddress?.let { bleServiceData?.setMotionVector(it, motionVector) } != null) {
-                this.motionVector = motionVector
+            if (deviceAddress?.let {
+                    bleServiceDataState.value?.setMotionVector(
+                        it, motionVector
+                    )
+                } != null) {
+                _motionVectorChannel.send(motionVector)
             }
         } catch (e: Exception) {
             Toast.makeText(
-                context,
-                "Failed to set new motion vector: ${e.message}",
-                Toast.LENGTH_LONG
-            )
-                .show()
+                context, "Failed to set new motion vector: ${e.message}", Toast.LENGTH_LONG
+            ).show()
         }
     }
 
     suspend fun setBodyTranslation(
-        context: Context,
-        bodyTranslation: Translation
+        context: Context, bodyTranslation: Translation
     ) {
         try {
             if (deviceAddress?.let {
-                    bleServiceData?.setBodyTranslation(
-                        it,
-                        bodyTranslation
+                    bleServiceDataState.value?.setBodyTranslation(
+                        it, bodyTranslation
                     )
                 } != null) {
-                Log.i("CVM", "Body translation set to ${bodyTranslation.y}")
-                this.bodyTranslation = bodyTranslation
-                Log.i("CVM", "This Body translation set to ${this.bodyTranslation?.y}")
-
+                _bodyTranslationChannel.send(bodyTranslation)
             }
         } catch (e: Exception) {
             Toast.makeText(
-                context,
-                "Failed to set new body translation: ${e.message}",
-                Toast.LENGTH_LONG
-            )
-                .show()
+                context, "Failed to set new body translation: ${e.message}", Toast.LENGTH_LONG
+            ).show()
         }
     }
 
     suspend fun setBodyRotation(
-        context: Context,
-        bodyRotation: Quaternion
+        context: Context, bodyRotation: Quaternion
     ) {
         try {
-            if (deviceAddress?.let { bleServiceData?.setBodyRotation(it, bodyRotation) } != null) {
-                this.bodyRotation = bodyRotation
+            if (deviceAddress?.let {
+                    bleServiceDataState.value?.setBodyRotation(
+                        it, bodyRotation
+                    )
+                } != null) {
+                _bodyRotationChannel.send(bodyRotation)
             }
         } catch (e: Exception) {
             Toast.makeText(
-                context,
-                "Failed to set new body rotation: ${e.message}",
-                Toast.LENGTH_LONG
-            )
-                .show()
+                context, "Failed to set new body rotation: ${e.message}", Toast.LENGTH_LONG
+            ).show()
         }
     }
 
     suspend fun setLegRadius(
-        context: Context,
-        legRadius: Float
+        context: Context, legRadius: Float
     ) {
         try {
-            if (deviceAddress?.let { bleServiceData?.setLegRadius(it, legRadius) } != null) {
-                this.legRadius = legRadius
+            if (deviceAddress?.let {
+                    bleServiceDataState.value?.setLegRadius(
+                        it, legRadius
+                    )
+                } != null) {
+                _legRadiusChannel.send(legRadius)
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Failed to set new leg radius: ${e.message}", Toast.LENGTH_LONG)
@@ -205,36 +277,38 @@ class ConnectedViewModel : ViewModel() {
     }
 
     suspend fun setBatteryUpdateIntervalMs(
-        context: Context,
-        batteryUpdateIntervalMs: UInt
+        context: Context, batteryUpdateIntervalMs: UInt
     ) {
         try {
             if (deviceAddress?.let {
-                    bleServiceData?.setBatteryUpdateIntervalMs(
-                        it,
-                        batteryUpdateIntervalMs
+                    bleServiceDataState.value?.setBatteryUpdateIntervalMs(
+                        it, batteryUpdateIntervalMs
                     )
                 } != null) {
-                this.batteryUpdateIntervalMs = batteryUpdateIntervalMs
+                _batteryUpdateIntervalMsChannel.send(batteryUpdateIntervalMs)
+                Toast.makeText(
+                    context,
+                    "Set new battery update interval: $batteryUpdateIntervalMs",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         } catch (e: Exception) {
             Toast.makeText(
                 context,
                 "Failed to set new battery update interval: ${e.message}",
                 Toast.LENGTH_LONG
-            )
-                .show()
+            ).show()
         }
     }
 
     suspend fun onPlayPause(context: Context) {
-        if (stateMachine == StateMachine.PAUSED && previousStateMachine != null) {
+        if (stateMachineFlow.value == StateMachine.PAUSED && previousStateMachine != null) {
             setStateMachine(context, previousStateMachine!!) {
                 previousStateMachine = null
             }
         } else {
             setStateMachine(context, StateMachine.PAUSED) {
-                previousStateMachine = stateMachine
+                previousStateMachine = stateMachineFlow.value
             }
         }
     }

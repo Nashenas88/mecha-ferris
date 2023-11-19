@@ -79,8 +79,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.12.0")
     val lifecycleVersion = "2.6.2"
     val navigationVersion = "2.7.4"
-    val composeVersion = "1.5.3"
-    val composeBom = platform("androidx.compose:compose-bom:2023.04.00")
+    val composeVersion = "1.5.4"
+    val composeBom = platform("androidx.compose:compose-bom:2023.10.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
@@ -90,6 +90,9 @@ dependencies {
     implementation("no.nordicsemi.android:ble-livedata:2.6.1")
 
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:$lifecycleVersion")
+    // Lifecycle utilities for Compose
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion")
+
     implementation(platform("androidx.compose:compose-bom:2022.10.00"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
