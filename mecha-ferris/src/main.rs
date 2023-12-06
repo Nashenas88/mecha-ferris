@@ -309,7 +309,6 @@ fn main() -> ! {
         [servo16, servo17, servo18],
     ];
     let calibrating_calibrations = calibrating_calibrations();
-    let mut joints = make_joints(servos1, calibrations, calibrating_calibrations);
 
     count_down.start(1.secs());
     let _ = nb::block!(count_down.wait());
@@ -344,7 +343,8 @@ fn main() -> ! {
     let mut time = 0.0;
     let mut step_delay = walking.duration() as f32;
     let mut i2c_manager = CommsManager::new();
-    let mut robot_state = RobotState::new();
+    let mut robot_state =
+        RobotState::new(make_joints(servos1, calibrations, calibrating_calibrations));
     robot_state.body_translation.y = 170.0;
     robot_state.leg_radius = 250.0;
     robot_state.animation_factor = 2.0;
@@ -355,6 +355,7 @@ fn main() -> ! {
         LED_BRIGHTNESS,
     ));
 
+    log::info!("Waiting for button press...");
     // Wait for button press to initialize servos.
     let user_sw = pins.user_sw.into_pull_up_input();
     let mut collect_debouncer = Debouncer::new(5, user_sw);
@@ -367,25 +368,43 @@ fn main() -> ! {
         let _ = nb::block!(count_down.wait());
     }
 
-    let mut now = timer.get_counter();
+    log::info!("Button pressed. Starting event loop");
+    let mut start = timer.get_counter();
     let _ = ws.write(brightness([purple(); 6].into_iter(), LED_BRIGHTNESS));
-    let mut last_update = now;
+    let mut last_update = start;
     state.live_state.state_machine = state::StateMachine::Homing;
     let mut homing = Homing::new();
 
+    let big_bang = timer.get_counter();
     loop {
-        now = timer.get_counter();
+        start = timer.get_counter();
+        log::info!("tick {:?}\n", (start - big_bang).to_millis());
+        let was_calibrating = matches!(
+            state.live_state.state_machine,
+            state::StateMachine::Calibrating
+        );
         if i2c_manager.run_loop(&mut i2c_peripheral, &mut state) {
+            if was_calibrating
+                && !matches!(
+                    state.live_state.state_machine,
+                    state::StateMachine::Calibrating,
+                )
+            {
+                // TODO finalize calibration?
+            }
             let color = match state.live_state.state_machine {
                 state::StateMachine::Paused => cyan(),
                 state::StateMachine::Homing => {
-                    last_update = now;
+                    last_update = start;
                     homing.reset();
                     yellow()
                 }
-                state::StateMachine::Calibrating => blue(),
+                state::StateMachine::Calibrating => {
+                    last_update = start;
+                    blue()
+                }
                 state::StateMachine::Looping | state::StateMachine::Exploring => {
-                    last_update = now;
+                    last_update = start;
                     green()
                 }
             };
@@ -393,26 +412,29 @@ fn main() -> ! {
         }
 
         // TODO Don't update time if paused?
-        let diff = (now - last_update).to_millis();
-        time += diff as f32 / 1000.0;
+        let calc_start = timer.get_counter();
+        let diff = (calc_start - last_update).to_millis();
 
         let update = match state.live_state.state_machine {
-            state::StateMachine::Paused => false,
+            state::StateMachine::Paused => {
+                last_update = calc_start;
+                false
+            }
             state::StateMachine::Homing => {
-                let update = homing.update(diff, &mut servo_cluster, &joints);
+                let update = homing.update(diff, &mut servo_cluster, &state.live_state.joints);
                 if update {
-                    last_update = now;
+                    last_update = calc_start;
                 }
                 update
             }
             state::StateMachine::Calibrating => {
-                // last_update = now;
-                // true
-                state.update(diff as f32, &mut servo_cluster, &mut joints);
-                false
+                last_update = calc_start;
+                state.update(diff as f32, &mut servo_cluster);
+                true
             }
             state::StateMachine::Looping | state::StateMachine::Exploring => {
-                last_update = now;
+                last_update = calc_start;
+                time += diff as f32 / 1000.0;
                 if time > step_delay {
                     let (_, delay) = walking.next_animation();
                     time %= step_delay;
@@ -420,7 +442,7 @@ fn main() -> ! {
                 }
                 let mut leg_visitor = LegVisitor {
                     servo_cluster: &mut servo_cluster,
-                    joints: &joints,
+                    joints: &state.live_state.joints,
                     position_start: Instant::from_ticks(0),
                     servo_start: Instant::from_ticks(0),
                     timer: &timer,
@@ -436,7 +458,7 @@ fn main() -> ! {
                         .map(|e| if e { red() } else { green() }),
                     LED_BRIGHTNESS,
                 ));
-                state.update(diff as f32, &mut servo_cluster, &mut joints);
+                state.update(diff as f32, &mut servo_cluster);
                 true
             }
         };
@@ -451,7 +473,9 @@ fn main() -> ! {
             log::info!("Current reading: {}", current);
         }
 
-        count_down.start((UPDATE_MS - diff).min(0).millis());
+        let loop_time = (timer.get_counter() - start).to_millis();
+        let count_down_time = (UPDATE_MS - loop_time).max(0).millis();
+        count_down.start(count_down_time);
         let _ = nb::block!(count_down.wait());
     }
 }

@@ -11,19 +11,7 @@ use jni::sys::{jboolean, jfloat, jint, jsize};
 use jni::JNIEnv;
 use std::mem::MaybeUninit;
 
-#[rustfmt::skip]
-#[export_name =
-    "Java_paulfaria_mechaferris_RustLibrary_00024Companion_SendBatteryLevel_0002dWZ4Q5Ns"
-]
-pub extern "system" fn send_battery_level<'a>(
-    env: JNIEnv<'a>,
-    _class: JClass,
-    value: jint,
-) -> JByteArray<'a> {
-    env.byte_array_from_slice((value as u32).to_gatt()).unwrap()
-}
-
-#[export_name = "Java_paulfaria_mechaferris_RustLibrary_00024Companion_ReadBatteryLevel"]
+#[export_name = "Java_paulfaria_mechaferris_RustLibrary_00024Companion_ReadBatteryLevel_0002dOGnWXxg"]
 pub extern "system" fn read_battery_level(env: JNIEnv, _class: JClass, input: JByteArray) -> jint {
     let input: Vec<u8> = env.convert_byte_array(input).unwrap();
     let result = process(Kind::BatteryLevel, &input);

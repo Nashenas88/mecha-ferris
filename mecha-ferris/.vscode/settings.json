@@ -1,7 +1,14 @@
 {
     "rust-analyzer.cargo.target": "thumbv6m-none-eabi",
     "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.check.targets": "thumbv6m-none-eabi",
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.check.features": [
+        "defmt",
+        "debug-current"
+    ],
     "editor.formatOnSave": true,
+    "rust-analyzer.checkOnSave": true,
     "rust-analyzer.cargo.features": [
         "defmt",
         "debug-current"

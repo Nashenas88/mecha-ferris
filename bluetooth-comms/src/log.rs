@@ -1,5 +1,11 @@
 #[cfg(feature = "defmt")]
-pub use defmt::{error, info, panic, trace, unwrap, warn};
+pub use defmt::{debug, error, info, panic, trace, unwrap, warn};
+
+#[cfg(not(feature = "defmt"))]
+#[macro_export]
+macro_rules! debug {
+    ($($arg:expr),*$(,)?) => {{$(let _ = &$arg;)*}};
+}
 
 #[cfg(not(feature = "defmt"))]
 #[macro_export]

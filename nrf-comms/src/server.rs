@@ -1,18 +1,16 @@
 use core::cell::RefCell;
 
-use crate::command::{handle_command, CommandUpdate, StateManager, SyncKind, UpdateKind};
-use crate::log;
+use crate::command::{handle_command, CommandUpdate, StateManager, UpdateKind};
 use crate::services::{update, UpdateError, Wrapper};
+use crate::{log, CommsError, CriticalChannel, CriticalReceiver, CriticalSender};
 use crate::{
     BatteryService, BatteryServiceEvent, Command, ControllerService, ControllerServiceEvent,
     ROBOT_STATE,
 };
 use bluetooth_comms::wrappers::{Translation, UQuaternion, Vector, SM};
 use bluetooth_comms::{CalibrationDatum, CalibrationIndex, SetRes, SetResult};
-use communication::I2cRequest;
+use communication::{I2cRequest, I2cResponse};
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::{Channel, Sender};
 use nalgebra::{Translation3, UnitQuaternion, Vector3};
 use nrf_softdevice::ble::gatt_server::RegisterError;
 use nrf_softdevice::ble::{gatt_server, Connection, DisconnectedError};
@@ -31,6 +29,7 @@ impl Server {
     pub(crate) fn new(sd: &mut Softdevice) -> Result<Self, RegisterError> {
         let server = ServerInner::new(sd)?;
         server.bas.battery_level_set(&0).unwrap();
+        server.controller.notify_all_set(&false).unwrap();
         server.controller.sync_set(&false).unwrap();
         server
             .controller
@@ -101,23 +100,23 @@ impl Server {
         conn: &'static RefCell<Option<Connection>>,
         state_manager: &'static RefCell<StateManager>,
         command_update: &'static RefCell<CommandUpdate>,
-        channel: &'static Channel<CriticalSectionRawMutex, I2cRequest, 1>,
+        request_channel: &'static CriticalChannel<I2cRequest>,
+        response_channel: &'static CriticalChannel<Result<I2cResponse, CommsError>>,
         spawner: Spawner,
     ) -> DisconnectedError {
         gatt_server::run(conn.borrow().as_ref().unwrap(), &self.0, |e| match e {
             ServerInnerEvent::Bas(e) => match e {
                 BatteryServiceEvent::BatteryLevelCccdWrite { notifications } => {
                     log::info!("battery notifications: {}", notifications);
+                    command_update.borrow_mut().battery_level =
+                        UpdateKind::from_cccd(notifications, false);
                 }
             },
             ServerInnerEvent::Controller(e) => {
                 log::info!("Processing command");
                 let command = match e {
-                    ControllerServiceEvent::SyncWrite(sync) => Some(Command::Sync(if sync {
-                        SyncKind::AllState
-                    } else {
-                        SyncKind::OnlyCommands
-                    })),
+                    ControllerServiceEvent::NotifyAllWrite(_) => Some(Command::NotifyAll),
+                    ControllerServiceEvent::SyncWrite(_) => Some(Command::Sync),
                     ControllerServiceEvent::StateWrite(Wrapper(SM(state_machine))) => {
                         Some(Command::ChangeState(state_machine))
                     }
@@ -239,7 +238,8 @@ impl Server {
                         self,
                         conn,
                         state_manager,
-                        channel.sender(),
+                        request_channel.sender(),
+                        response_channel.receiver(),
                         command,
                         command_update,
                     );
@@ -261,7 +261,8 @@ async fn command_task(
     server: &'static Server,
     conn: &'static RefCell<Option<Connection>>,
     state_manager: &'static RefCell<StateManager>,
-    sender: Sender<'static, CriticalSectionRawMutex, I2cRequest, 1>,
+    request_tx: CriticalSender<I2cRequest>,
+    response_rx: CriticalReceiver<Result<I2cResponse, CommsError>>,
     command: Command,
     command_update: &'static RefCell<CommandUpdate>,
 ) {
@@ -270,22 +271,23 @@ async fn command_task(
     let res = handle_command(
         &mut robot_state,
         &mut state_manager.borrow_mut(),
-        sender,
+        request_tx,
+        response_rx,
         command,
     )
     .await;
-    if let Err(ref e) = res {
-        log::error!("Failed to process command {}: {}", command, e);
-    }
     let robot_state = &*robot_state;
-    let command_result = command.to_result(robot_state, res);
+    let command_results = command.to_results(robot_state, res);
     if let Ok(conn) = conn.try_borrow() {
         if let Some(conn) = &*conn {
-            let res: Result<(), UpdateError> =
-                update(server, conn, &command_update.borrow(), command_result);
-            if let Err(e) = res {
-                log::info!("send notification error: {:?}", e);
+            for res in command_results {
+                let res: Result<(), UpdateError> =
+                    update(server, conn, &command_update.borrow(), res);
+                if let Err(e) = res {
+                    log::info!("send notification error: {:?}", e);
+                }
             }
         }
     }
+    log::info!("Done executing command: {}", command);
 }

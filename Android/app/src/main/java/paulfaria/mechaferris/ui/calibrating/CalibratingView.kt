@@ -3,6 +3,7 @@ package paulfaria.mechaferris.ui.calibrating
 import android.content.Context
 import android.content.res.Configuration
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -25,9 +26,12 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -39,14 +43,27 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+import paulfaria.mechaferris.CalibrationDatum
+import paulfaria.mechaferris.SetRes
+import paulfaria.mechaferris.SetResult
 import paulfaria.mechaferris.calibration.Joint
 import paulfaria.mechaferris.calibration.ServoCalibration
 import paulfaria.mechaferris.data.calibrationDataStore
 import paulfaria.mechaferris.ui.theme.MechaFerrisTheme
 
-class CalibratingViewModel {
+@OptIn(ExperimentalUnsignedTypes::class)
+class CalibratingViewModel @OptIn(ExperimentalUnsignedTypes::class) constructor(
+    private val getCalibrationFlow: Flow<CalibrationDatum>,
+    private val onRequestCalibration: suspend (Context, UByte, UByte, UByte) -> Unit,
+    private val setCalibrationFlow: Flow<SetResult>,
+    val onSetCalibration: suspend (Context, UByte, UByte, UByte, Float) -> Float?,
+) : ViewModel() {
     companion object {
         val LEG_OPTIONS = listOf("1", "2", "3", "4", "5", "6")
         val JOINT_OPTIONS = listOf("Coxa", "Femur", "Tibia")
@@ -59,6 +76,61 @@ class CalibratingViewModel {
     val kind = mutableIntStateOf(0)
     val enabled = mutableStateOf(false)
     val pulse = mutableFloatStateOf(1500.0f)
+
+    val calibrations = mutableStateListOf<Float?>()
+
+    init {
+        calibrations.addAll(List(60) { null })
+    }
+
+    fun onLaunch(context: Context) {
+        Log.i("CalibratingViewModel", "Launching")
+        viewModelScope.launch {
+            getCalibrationFlow.collect {
+                Log.i(
+                    "CalibratingViewModel",
+                    "Received calibration for (${it.index.leg}, ${it.index.joint}, ${it.index.kind}): ${it.pulse}"
+                )
+                val index =
+                    it.index.leg.toByte() * 6 + it.index.joint.toByte() * 3 + it.index.kind.toByte()
+                calibrations[index] = it.pulse
+            }
+        }.invokeOnCompletion { cause ->
+            Log.i("CalibratingViewModel", "Completed get watch with $cause") }
+        viewModelScope.launch {
+            setCalibrationFlow.collect {
+                if (it.result != SetRes.Ok) {
+                    Log.e(
+                        "CalibratingViewModel",
+                        "Failed to set calibration for (${it.index.leg}, ${it.index.joint}, ${it.index.kind})"
+                    )
+                    Toast.makeText(
+                        context,
+                        "Failed to set calibration for (${it.index.leg}, ${it.index.joint}, ${it.index.kind})",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }.invokeOnCompletion { cause ->
+            Log.i("CalibratingViewModel", "Completed set watch with $cause") }
+        viewModelScope.launch {
+            Log.i("CalibratingViewModel", "Requesting all calibrations")
+            for (leg in (0..<6)) {
+                for (joint in (0..<3)) {
+                    val maxKind = if (joint == 2) 4 else 3
+                    for (kind in (0..<maxKind)) {
+                        onRequestCalibration(
+                            context,
+                            leg.toUByte(),
+                            joint.toUByte(),
+                            kind.toUByte()
+                        )
+                    }
+                }
+            }
+        }.invokeOnCompletion { cause ->
+            Log.i("CalibratingViewModel", "Completed all gets with $cause") }
+    }
 
     fun kindOptions(): List<String> {
         return when (joint.intValue) {
@@ -147,6 +219,11 @@ fun Float.format(digits: Int) = "%07.${digits}f".format(this)
 fun CalibratingView(viewModel: CalibratingViewModel) {
     val coroutineScope = rememberCoroutineScope()
     val localContext = LocalContext.current
+
+    LaunchedEffect(true) {
+        viewModel.onLaunch(localContext)
+    }
+
     val calibrationData = localContext.calibrationDataStore.data.collectAsStateWithLifecycle(null)
     val currentCalibrationData by rememberSaveable {
         // We want to snapshot the stored data and use it as the initial value. It should NOT
@@ -167,6 +244,13 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
     }
     val kind = rememberSaveable {
         viewModel.kind
+    }
+    val modelPulse by remember {
+        derivedStateOf {
+            val index =
+                kind.intValue.toByte() + joint.intValue.toByte() * 3 + leg.intValue.toByte() * 10
+            viewModel.calibrations[index]
+        }
     }
 
     Column(
@@ -207,7 +291,40 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
                 color = MaterialTheme.colorScheme.primary
             )
             Spacer(modifier = Modifier.width(12.dp))
-            Slider(value = pulse.floatValue, onValueChange = { pulse.floatValue = it }, valueRange = 400.0f..2700.0f)
+            Slider(
+                value = pulse.floatValue, onValueChange = { pulse.floatValue = it },
+                onValueChangeFinished = {
+                    if (enabled) {
+                        coroutineScope.launch {
+                            viewModel.onSetCalibration(
+                                localContext,
+                                leg.intValue.toUByte(),
+                                joint.intValue.toUByte(),
+                                kind.intValue.toUByte(),
+                                pulse.floatValue
+                            )?.let {
+                                viewModel.calibrations[kind.intValue + joint.intValue * 3 + leg.intValue * 10] =
+                                    it
+                            }
+                        }
+                    }
+                },
+                valueRange = 400.0f..2700.0f
+            )
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Live Pulse: ${(modelPulse ?: 1000.0f).format(2)}",
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Slider(
+                value = modelPulse ?: 1000.0f,
+                onValueChange = {},
+                enabled = false,
+                valueRange = 400.0f..2700.0f
+            )
         }
         Row(
             horizontalArrangement = Arrangement.Start,
@@ -216,6 +333,20 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
         ) {
             Checkbox(checked = enabled, onCheckedChange = { new ->
                 enabled = new
+                if (enabled && modelPulse != pulse.floatValue) {
+                    coroutineScope.launch {
+                        viewModel.onSetCalibration(
+                            localContext,
+                            leg.intValue.toUByte(),
+                            joint.intValue.toUByte(),
+                            kind.intValue.toUByte(),
+                            pulse.floatValue
+                        )?.let {
+                            viewModel.calibrations[kind.intValue + joint.intValue * 3 + leg.intValue * 10] =
+                                it
+                        }
+                    }
+                }
             }, enabled = true)
             Spacer(modifier = Modifier.width(12.dp))
             Text(
@@ -235,7 +366,7 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
                 Text(text = "Next")
             }
         }
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
             val context: Context = LocalContext.current
             Button(
@@ -268,7 +399,7 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
             ) {
                 Text(text = "Save", color = MaterialTheme.colorScheme.onPrimary)
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.weight(1f))
             Button(
                 modifier = Modifier.weight(0.75f),
                 onClick = {
@@ -288,12 +419,19 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
     }
 }
 
+@OptIn(ExperimentalUnsignedTypes::class)
 @Preview(showBackground = true)
 @Preview(showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
 @Composable
 fun CalibratingViewPreview() {
     MechaFerrisTheme {
-        CalibratingView(CalibratingViewModel())
+        CalibratingView(
+            CalibratingViewModel(
+                emptyFlow(),
+                { _, _, _, _ -> },
+                emptyFlow(),
+                { _, _, _, _, _ -> null })
+        )
     }
 }
 

@@ -3,12 +3,7 @@
 package paulfaria.mechaferris
 
 import android.annotation.SuppressLint
-import android.content.ComponentName
-import android.content.Intent
-import android.content.ServiceConnection
 import android.os.Bundle
-import android.os.IBinder
-import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -38,7 +33,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -47,22 +41,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.juul.exercise.annotations.Exercise
+import com.juul.exercise.annotations.Extra
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import paulfaria.mechaferris.Constants.Companion.DEVICE_ADDRESS_EXTRA
-import paulfaria.mechaferris.Constants.Companion.DEVICE_NAME_EXTRA
 import paulfaria.mechaferris.ui.calibrating.CalibratingView
 import paulfaria.mechaferris.ui.controls.ControlsView
 import paulfaria.mechaferris.ui.home.HomeView
 import paulfaria.mechaferris.ui.theme.MechaFerrisTheme
+
 
 enum class ScaffoldState {
     Home, Calibrating, Controls,
@@ -79,74 +71,30 @@ class DialogViewModel : ViewModel() {
     }
 }
 
+@Exercise(
+    Extra("macAddress", String::class),
+    Extra("deviceName", String::class, optional = true)
+)
 class Connected : ComponentActivity() {
     private val connectedViewModel by viewModels<ConnectedViewModel> {
         viewModelFactory {
             initializer {
-                ConnectedViewModel(bleServiceData)
+                ConnectedViewModel(extras.deviceName, extras.macAddress)
             }
         }
     }
 
     private val dialogViewModel: DialogViewModel by viewModels()
-    private val defaultScope = CoroutineScope(Dispatchers.Default)
-    private var bleServiceConn: MFServiceConn? = null
-    private var bleServiceData: MutableStateFlow<BleService.BluetoothServiceBinder?> =
-        MutableStateFlow(null)
-
-    private inner class MFServiceConn : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            if (BuildConfig.DEBUG && BleService::class.java.name != name?.className) {
-                error("Connected to unknown service: ${name?.className}")
-            } else {
-                bleServiceData.value = service as BleService.BluetoothServiceBinder
-                bleServiceData.value?.let { bleServiceData ->
-                    defaultScope.launch {
-                        try {
-                            connectedViewModel.deviceAddress?.let {
-                                bleServiceData.sync(it, true)
-
-                                // sync calibration data?
-                                connectedViewModel.calibratingViewModel.let { cvm ->
-                                    bleServiceData.requestCalibrationData(
-                                        it,
-                                        cvm.leg.intValue.toUByte(),
-                                        cvm.joint.intValue.toUByte(),
-                                        cvm.kind.intValue.toUByte(),
-                                    )
-                                    // TODO: show loading indicator to signify request in progress?
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e("Connected", "Failed to sync: $e")
-                        }
-                    }
-                }
-            }
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            if (BuildConfig.DEBUG && BleService::class.java.name != name?.className) {
-                error("Disconnected from unknown service")
-            } else {
-                bleServiceData.value = null
-                dialogViewModel.onDisconnected()
-                finish()
-            }
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val name = intent.getStringExtra(DEVICE_NAME_EXTRA)
-        val address = intent.getStringExtra(DEVICE_ADDRESS_EXTRA)
-        connectedViewModel.deviceName = name
-        connectedViewModel.deviceAddress = address
-
         setContent {
             val coroutineScope = rememberCoroutineScope()
+            val viewState by connectedViewModel.viewState.collectAsStateWithLifecycle(ViewState.Disconnected)
             MechaFerrisTheme {
+                Text(viewState.label)
+                Spacer(modifier = Modifier.size(12.dp))
                 ConnectedView(
                     coroutineScope, dialogViewModel.showDialog,
                     onDisconnectedConfirmed = {
@@ -158,30 +106,6 @@ class Connected : ComponentActivity() {
             }
         }
     }
-
-    override fun onStart() {
-        super.onStart()
-        val latestServiceConn = MFServiceConn()
-        if (bindService(
-                Intent(BleService.DATA_PLANE_ACTION, null, this, BleService::class.java),
-                latestServiceConn,
-                0
-            )
-        ) {
-            defaultScope.launch {
-                bleServiceConn = latestServiceConn
-            }
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-
-        if (bleServiceConn != null) {
-            unbindService(bleServiceConn!!)
-            bleServiceConn = null
-        }
-    }
 }
 
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
@@ -190,20 +114,20 @@ fun ConnectedView(
     coroutineScope: CoroutineScope,
     showDisconnected: Boolean,
     onDisconnectedConfirmed: () -> Unit,
-    viewModel: ConnectedViewModel
+    viewModel: ConnectedViewModel,
 ) {
+    val deviceName = viewModel.deviceName
+    val deviceAddress = viewModel.macAddress
     var expanded by rememberSaveable { mutableStateOf(false) }
 
-    val deviceName = remember { viewModel.deviceName }
-    val deviceAddress = remember { viewModel.deviceAddress }
-    val batteryLevel by viewModel.batteryLevelFlow.collectAsStateWithLifecycle()
-    val stateMachine by viewModel.stateMachineFlow.collectAsStateWithLifecycle()
-    val animationFactor by viewModel.animationFactorFlow.collectAsStateWithLifecycle()
-    val angularVelocity by viewModel.angularVelocityFlow.collectAsStateWithLifecycle()
-    val motionVector by viewModel.motionVectorFlow.collectAsStateWithLifecycle()
-    val bodyTranslation by viewModel.bodyTranslationFlow.collectAsStateWithLifecycle()
-    val bodyRotation by viewModel.bodyRotationFlow.collectAsStateWithLifecycle()
-    val legRadius by viewModel.legRadiusFlow.collectAsStateWithLifecycle()
+    val batteryLevel by viewModel.batteryLevel.collectAsStateWithLifecycle(initialValue = null)
+    val stateMachine by viewModel.stateMachine.collectAsStateWithLifecycle(initialValue = null)
+    val animationFactor by viewModel.animationFactor.collectAsStateWithLifecycle(initialValue = null)
+    val angularVelocity by viewModel.angularVelocity.collectAsStateWithLifecycle(initialValue = null)
+    val motionVector by viewModel.motionVector.collectAsStateWithLifecycle(initialValue = null)
+    val bodyTranslation by viewModel.bodyTranslation.collectAsStateWithLifecycle(initialValue = null)
+    val bodyRotation by viewModel.bodyRotation.collectAsStateWithLifecycle(initialValue = null)
+    val legRadius by viewModel.legRadius.collectAsStateWithLifecycle(initialValue = null)
 
     val context = LocalContext.current
     if (showDisconnected) {
@@ -440,56 +364,56 @@ fun PlayPauseIcon(stateMachine: StateMachine?) {
     }
 }
 
-@Preview(showBackground = true)
-@Composable
-fun ConnectedViewHomePreview() {
-    MechaFerrisTheme {
-        val coroutineScope = rememberCoroutineScope()
-        ConnectedView(coroutineScope,
-            false,
-            viewModel = ConnectedViewModel().apply { scaffoldState = ScaffoldState.Home },
-            onDisconnectedConfirmed = {})
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ConnectedViewCalibratingPreview() {
-    MechaFerrisTheme {
-        val coroutineScope = rememberCoroutineScope()
-        ConnectedView(coroutineScope,
-            false,
-            viewModel = ConnectedViewModel().apply {
-                scaffoldState = ScaffoldState.Calibrating
-            },
-            onDisconnectedConfirmed = {})
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun ConnectedViewControlsPreview() {
-    MechaFerrisTheme {
-        val coroutineScope = rememberCoroutineScope()
-        ConnectedView(coroutineScope,
-            false,
-            viewModel = ConnectedViewModel().apply {
-                scaffoldState = ScaffoldState.Controls
-            },
-            onDisconnectedConfirmed = {})
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun DialogPreview() {
-    MechaFerrisTheme {
-        val coroutineScope = rememberCoroutineScope()
-        ConnectedView(coroutineScope,
-            true,
-            viewModel = ConnectedViewModel().apply {
-                scaffoldState = ScaffoldState.Home
-            },
-            onDisconnectedConfirmed = {})
-    }
-}
+//@Preview(showBackground = true)
+//@Composable
+//fun ConnectedViewHomePreview() {
+//    MechaFerrisTheme {
+//        val coroutineScope = rememberCoroutineScope()
+//        ConnectedView(coroutineScope,
+//            false,
+//            viewModel = ConnectedViewModel("MechaFerris", "abc123").apply { scaffoldState = ScaffoldState.Home },
+//            onDisconnectedConfirmed = {})
+//    }
+//}
+//
+//@Preview(showBackground = true)
+//@Composable
+//fun ConnectedViewCalibratingPreview() {
+//    MechaFerrisTheme {
+//        val coroutineScope = rememberCoroutineScope()
+//        ConnectedView(coroutineScope,
+//            false,
+//            viewModel = ConnectedViewModel("MechaFerris", "abc123").apply {
+//                scaffoldState = ScaffoldState.Calibrating
+//            },
+//            onDisconnectedConfirmed = {})
+//    }
+//}
+//
+//@Preview(showBackground = true)
+//@Composable
+//fun ConnectedViewControlsPreview() {
+//    MechaFerrisTheme {
+//        val coroutineScope = rememberCoroutineScope()
+//        ConnectedView(coroutineScope,
+//            false,
+//            viewModel = ConnectedViewModel("MechaFerris", "abc123").apply {
+//                scaffoldState = ScaffoldState.Controls
+//            },
+//            onDisconnectedConfirmed = {})
+//    }
+//}
+//
+//@Preview(showBackground = true)
+//@Composable
+//fun DialogPreview() {
+//    MechaFerrisTheme {
+//        val coroutineScope = rememberCoroutineScope()
+//        ConnectedView(coroutineScope,
+//            true,
+//            viewModel = ConnectedViewModel("MechaFerris", "abc123").apply {
+//                scaffoldState = ScaffoldState.Home
+//            },
+//            onDisconnectedConfirmed = {})
+//    }
+//}

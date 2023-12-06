@@ -4,6 +4,7 @@
 Cargo.lock
 target/
 stl/
+host-backup/
 
 # editor files
 .vscode/*

@@ -33,6 +33,9 @@ pub(crate) struct BatteryService {
 
 #[nrf_softdevice::gatt_service(uuid = "77144c32-0ed7-469b-a3d3-0f2c9157333a")]
 pub(crate) struct ControllerService {
+    #[characteristic(uuid = "3f6b77c2-0205-4a77-a809-2479b9533664", write)]
+    pub(crate) notify_all: bool,
+
     #[characteristic(uuid = "b0115f52-c6fd-4ea4-94cf-21626b9e3469", write)]
     pub(crate) sync: bool,
 
@@ -145,50 +148,213 @@ pub(crate) fn update(
     command_update: &CommandUpdate,
     command_result: CommandResult,
 ) -> Result<(), UpdateError> {
+    log::info!(
+        "Sending update for {:?}: {:?}",
+        command_result,
+        command_update.get(command_result)
+    );
     match (command_result, command_update.get(command_result)) {
-        (CommandResult::Sync(battery_level), Some(UpdateKind::Notify)) => {
-            server.bas().battery_level_notify(conn, &battery_level)?;
+        (CommandResult::NotifyAll, _) => {
+            if let Some(UpdateKind::Notify) = command_update.battery_level {
+                let _ = server
+                    .bas()
+                    .battery_level_notify(conn, &server.bas().battery_level_get().unwrap());
+            }
+            match command_update.state {
+                Some(UpdateKind::Notify) => {
+                    let _ = server
+                        .controller()
+                        .state_notify(conn, &server.controller().state_get().unwrap());
+                }
+                Some(UpdateKind::Indicate) => {
+                    let _ = server
+                        .controller()
+                        .state_indicate(conn, &server.controller().state_get().unwrap());
+                }
+                None => {}
+            }
+            match command_update.animation_factor {
+                Some(UpdateKind::Notify) => {
+                    let _ = server.controller().animation_factor_notify(
+                        conn,
+                        &server.controller().animation_factor_get().unwrap(),
+                    );
+                }
+                Some(UpdateKind::Indicate) => {
+                    let _ = server.controller().animation_factor_indicate(
+                        conn,
+                        &server.controller().animation_factor_get().unwrap(),
+                    );
+                }
+                None => {}
+            }
+            match command_update.angular_velocity {
+                Some(UpdateKind::Notify) => {
+                    let _ = server.controller().angular_velocity_notify(
+                        conn,
+                        &server.controller().angular_velocity_get().unwrap(),
+                    );
+                }
+                Some(UpdateKind::Indicate) => {
+                    let _ = server.controller().angular_velocity_indicate(
+                        conn,
+                        &server.controller().angular_velocity_get().unwrap(),
+                    );
+                }
+                None => {}
+            }
+            match command_update.motion_vector {
+                Some(UpdateKind::Notify) => {
+                    let _ = server.controller().motion_vector_notify(
+                        conn,
+                        &server.controller().motion_vector_get().unwrap(),
+                    );
+                }
+                Some(UpdateKind::Indicate) => {
+                    let _ = server.controller().motion_vector_indicate(
+                        conn,
+                        &server.controller().motion_vector_get().unwrap(),
+                    );
+                }
+                None => {}
+            }
+            match command_update.body_translation {
+                Some(UpdateKind::Notify) => {
+                    let _ = server.controller().body_translation_notify(
+                        conn,
+                        &server.controller().body_translation_get().unwrap(),
+                    );
+                }
+                Some(UpdateKind::Indicate) => {
+                    let _ = server.controller().body_translation_indicate(
+                        conn,
+                        &server.controller().body_translation_get().unwrap(),
+                    );
+                }
+                None => {}
+            }
+            match command_update.body_rotation {
+                Some(UpdateKind::Notify) => {
+                    let _ = server.controller().body_rotation_notify(
+                        conn,
+                        &server.controller().body_rotation_get().unwrap(),
+                    );
+                }
+                Some(UpdateKind::Indicate) => {
+                    let _ = server.controller().body_rotation_indicate(
+                        conn,
+                        &server.controller().body_rotation_get().unwrap(),
+                    );
+                }
+                None => {}
+            }
+            match command_update.leg_radius {
+                Some(UpdateKind::Notify) => {
+                    let _ = server
+                        .controller()
+                        .leg_radius_notify(conn, &server.controller().leg_radius_get().unwrap());
+                }
+                Some(UpdateKind::Indicate) => {
+                    let _ = server
+                        .controller()
+                        .leg_radius_indicate(conn, &server.controller().leg_radius_get().unwrap());
+                }
+                None => {}
+            }
         }
-        (CommandResult::ChangeState(state_machine), Some(UpdateKind::Notify)) => server
+        (CommandResult::Sync, _) => {}
+        (
+            CommandResult::ChangeState(state_machine) | CommandResult::GetState(state_machine),
+            Some(UpdateKind::Notify),
+        ) => server
             .controller()
             .state_notify(conn, &Wrapper(SM(state_machine)))?,
-        (CommandResult::ChangeState(state_machine), Some(UpdateKind::Indicate)) => server
+        (
+            CommandResult::ChangeState(state_machine) | CommandResult::GetState(state_machine),
+            Some(UpdateKind::Indicate),
+        ) => server
             .controller()
             .state_indicate(conn, &Wrapper(SM(state_machine)))?,
-        (CommandResult::SetAnimationFactor(animation_factor), Some(UpdateKind::Notify)) => server
+        (
+            CommandResult::SetAnimationFactor(animation_factor)
+            | CommandResult::GetAnimationFactor(animation_factor),
+            Some(UpdateKind::Notify),
+        ) => server
             .controller()
             .animation_factor_notify(conn, &Wrapper(animation_factor))?,
-        (CommandResult::SetAnimationFactor(animation_factor), Some(UpdateKind::Indicate)) => server
+        (
+            CommandResult::SetAnimationFactor(animation_factor)
+            | CommandResult::GetAnimationFactor(animation_factor),
+            Some(UpdateKind::Indicate),
+        ) => server
             .controller()
             .animation_factor_indicate(conn, &Wrapper(animation_factor))?,
-        (CommandResult::SetBodyTranslation(body_translation), Some(UpdateKind::Notify)) => server
+        (
+            CommandResult::SetBodyTranslation(body_translation)
+            | CommandResult::GetBodyTranslation(body_translation),
+            Some(UpdateKind::Notify),
+        ) => server
             .controller()
             .body_translation_notify(conn, &Wrapper(Translation(body_translation)))?,
-        (CommandResult::SetBodyTranslation(body_translation), Some(UpdateKind::Indicate)) => server
+        (
+            CommandResult::SetBodyTranslation(body_translation)
+            | CommandResult::GetBodyTranslation(body_translation),
+            Some(UpdateKind::Indicate),
+        ) => server
             .controller()
             .body_translation_indicate(conn, &Wrapper(Translation(body_translation)))?,
-        (CommandResult::SetBodyRotation(body_rotation), Some(UpdateKind::Notify)) => server
+        (
+            CommandResult::SetBodyRotation(body_rotation)
+            | CommandResult::GetBodyRotation(body_rotation),
+            Some(UpdateKind::Notify),
+        ) => server
             .controller()
             .body_rotation_notify(conn, &Wrapper(UQuaternion(body_rotation)))?,
-        (CommandResult::SetBodyRotation(body_rotation), Some(UpdateKind::Indicate)) => server
+        (
+            CommandResult::SetBodyRotation(body_rotation)
+            | CommandResult::GetBodyRotation(body_rotation),
+            Some(UpdateKind::Indicate),
+        ) => server
             .controller()
             .body_rotation_indicate(conn, &Wrapper(UQuaternion(body_rotation)))?,
-        (CommandResult::SetMotionVector(motion_vector), Some(UpdateKind::Notify)) => server
+        (
+            CommandResult::SetMotionVector(motion_vector)
+            | CommandResult::GetMotionVector(motion_vector),
+            Some(UpdateKind::Notify),
+        ) => server
             .controller()
             .motion_vector_notify(conn, &Wrapper(Vector(motion_vector)))?,
-        (CommandResult::SetMotionVector(motion_vector), Some(UpdateKind::Indicate)) => server
+        (
+            CommandResult::SetMotionVector(motion_vector)
+            | CommandResult::GetMotionVector(motion_vector),
+            Some(UpdateKind::Indicate),
+        ) => server
             .controller()
             .motion_vector_indicate(conn, &Wrapper(Vector(motion_vector)))?,
-        (CommandResult::SetAngularVelocity(angular_velocity), Some(UpdateKind::Notify)) => server
+        (
+            CommandResult::SetAngularVelocity(angular_velocity)
+            | CommandResult::GetAngularVelocity(angular_velocity),
+            Some(UpdateKind::Notify),
+        ) => server
             .controller()
             .angular_velocity_notify(conn, &Wrapper(angular_velocity))?,
-        (CommandResult::SetAngularVelocity(angular_velocity), Some(UpdateKind::Indicate)) => server
+        (
+            CommandResult::SetAngularVelocity(angular_velocity)
+            | CommandResult::GetAngularVelocity(angular_velocity),
+            Some(UpdateKind::Indicate),
+        ) => server
             .controller()
             .angular_velocity_indicate(conn, &Wrapper(angular_velocity))?,
-        (CommandResult::SetLegRadius(leg_radius), Some(UpdateKind::Notify)) => server
+        (
+            CommandResult::SetLegRadius(leg_radius) | CommandResult::GetLegRadius(leg_radius),
+            Some(UpdateKind::Notify),
+        ) => server
             .controller()
             .leg_radius_notify(conn, &Wrapper(leg_radius))?,
-        (CommandResult::SetLegRadius(leg_radius), Some(UpdateKind::Indicate)) => server
+        (
+            CommandResult::SetLegRadius(leg_radius) | CommandResult::GetLegRadius(leg_radius),
+            Some(UpdateKind::Indicate),
+        ) => server
             .controller()
             .leg_radius_indicate(conn, &Wrapper(leg_radius))?,
         (CommandResult::GetCalibrationFor(cal_datum), Some(UpdateKind::Notify)) => server
@@ -200,5 +366,10 @@ pub(crate) fn update(
         (_, None) => {}
         (command, update) => log::warn!("Unexpected combination: {}, {}", command, update),
     }
+    log::info!(
+        "Update sent for {:?}: {:?}",
+        command_result,
+        command_update.get(command_result)
+    );
     Ok(())
 }

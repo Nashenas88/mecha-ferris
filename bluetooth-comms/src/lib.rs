@@ -11,6 +11,7 @@ pub mod wrappers;
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CalibrationIndex {
     pub leg: u8,
     pub joint: u8,
@@ -41,6 +42,7 @@ impl TestableFixedGattValue for CalibrationIndex {
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C, packed(4))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CalibrationDatum {
     value: f32,
     index: CalibrationIndex,
@@ -92,6 +94,7 @@ impl TestableFixedGattValue for CalibrationDatum {
 
 #[derive(Copy, Clone, Debug)]
 #[repr(u8)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum SetRes {
     Ok = 0,
     InvalidIndex = 1,
@@ -103,6 +106,7 @@ pub enum SetRes {
 
 #[derive(Copy, Clone, Debug)]
 #[repr(C, packed(4))]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SetResult {
     pub index: CalibrationIndex,
     pub result: SetRes,

@@ -22,6 +22,8 @@ servo-pio = { version = "0.2.1" }
 kinematics = { path = "../kinematics" }
 communication = { path = "../communication" }
 state = { path = "../state" }
+postcard = { version = "1.0.8", features = ["heapless"] }
+heapless = "0.7.0"
 
 [features]
 default = ["panic-halt"]
@@ -32,6 +34,7 @@ defmt = [
     "communication/defmt",
     "kinematics/defmt",
     "panic-probe/print-defmt",
+    "postcard/use-defmt",
 ]
 debug-visitor = ["defmt"]
 debug-current = ["defmt"]

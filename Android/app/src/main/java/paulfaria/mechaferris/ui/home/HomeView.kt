@@ -68,7 +68,7 @@ fun HomeView(
             )
             HomeViewRow(
                 label = "Animation Factor",
-                value = animationFactor?.let { "$animationFactor m/s" } ?: "Unknown")
+                value = animationFactor?.let { "$animationFactor /s" } ?: "Unknown")
             HomeViewRow(
                 label = "Angular Velocity",
                 value = angularVelocity?.let { "$angularVelocity rad/s" }
@@ -87,7 +87,7 @@ fun HomeView(
             )
             HomeViewRow(
                 label = "Leg Radius",
-                value = legRadius?.let { "$legRadius m" } ?: "Unknown")
+                value = legRadius?.let { "$legRadius mm" } ?: "Unknown")
         }
     }
 }

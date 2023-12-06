@@ -8,3 +8,7 @@ edition = "2021"
 [dependencies]
 nalgebra = { version = "0.32.2", default-features = false }
 state = { path = "../state" }
+defmt = { version = "0.3.5", optional = true }
+
+[features]
+defmt = ["dep:defmt"]

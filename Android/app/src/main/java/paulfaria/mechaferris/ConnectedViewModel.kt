@@ -8,95 +8,193 @@ import android.widget.Toast
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.LiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.asLiveData
 import androidx.lifecycle.viewModelScope
+import com.juul.kable.Bluetooth
+import com.juul.kable.ConnectionLostException
+import com.juul.kable.NotReadyException
+import com.juul.kable.Peripheral
+import com.juul.kable.State
+import com.juul.kable.peripheral
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flatMapConcat
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
-import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import paulfaria.mechaferris.ui.calibrating.CalibratingViewModel
+import kotlin.time.Duration.Companion.seconds
 
-@OptIn(FlowPreview::class)
-fun <T, U> Flow<T?>.flatMapNullable(transform: (T) -> Flow<U>): Flow<U?> {
-    return this.flatMapConcat { it?.let { transform(it) } ?: flowOf(null) }
+private val reconnectDelay = 1.seconds
+
+sealed class ViewState {
+
+    data object BluetoothUnavailable : ViewState()
+
+    data object Connecting : ViewState()
+
+    data class Connected(
+        val rssi: Int,
+        val batteryLevel: UInt,
+        val stateMachine: StateMachine,
+        val animationFactor: Float,
+        val angularVelocity: Float,
+        val motionVector: Vector3,
+        val bodyTranslation: Translation,
+        val bodyRotation: Quaternion,
+        val legRadius: Float,
+    ) : ViewState()
+
+    data object Disconnecting : ViewState()
+
+    data object Disconnected : ViewState()
 }
 
-@OptIn(ExperimentalCoroutinesApi::class)
-class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?> = emptyFlow()) :
+val ViewState.label: String
+    get() = when (this) {
+        ViewState.BluetoothUnavailable -> "Bluetooth unavailable"
+        ViewState.Connecting -> "Connecting"
+        is ViewState.Connected -> "Connected"
+        ViewState.Disconnecting -> "Disconnecting"
+        ViewState.Disconnected -> "Disconnected"
+    }
+
+@OptIn(ExperimentalCoroutinesApi::class, ExperimentalUnsignedTypes::class)
+class ConnectedViewModel(val deviceName: String?, val macAddress: String) :
     ViewModel() {
-    var deviceName: String? = null
-    var deviceAddress: String? = null
+    private val autoConnect = MutableStateFlow(false)
+    private val scope =
+        CoroutineScope(peripheralScope.coroutineContext + Job(peripheralScope.coroutineContext.job))
 
-    private val bleServiceDataState =
-        bleServiceData.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+    private val peripheral = scope.peripheral(macAddress) {
+        autoConnectIf(autoConnect::value)
+    }
+    private val mechaFerris = MechaFerris(peripheral)
+    private val state = combine(Bluetooth.availability, peripheral.state, ::Pair)
+    private var previousState: StateMachine? = null
 
-    val batteryLevelFlow: StateFlow<UInt?> = bleServiceData.flatMapNullable { it.batteryFlow }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), null)
+    val mutRequestedAnimationFactor = MutableStateFlow(1.0f)
+    val requestedAnimationFactor: StateFlow<Float> = mutRequestedAnimationFactor
 
-    private val _stateMachineChannel = Channel<StateMachine?>()
-    var stateMachineFlow: StateFlow<StateMachine?> = merge(_stateMachineChannel.receiveAsFlow(),
-        bleServiceData.flatMapNullable { it.stateMachineFlow }).stateIn(
-        viewModelScope, SharingStarted.Lazily, null
-    )
-    private var previousStateMachine: StateMachine? = null
+    init {
+        viewModelScope.enableAutoReconnect()
+    }
 
-    private val _animationFactorChannel = Channel<Float?>()
-    var animationFactorFlow: StateFlow<Float?> =
-        merge(_animationFactorChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
-            it.animationFactorFlow
-        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+    private fun CoroutineScope.enableAutoReconnect() {
+        state.filter { (bluetoothAvailability, connectionState) ->
+            bluetoothAvailability == Bluetooth.Availability.Available && connectionState is State.Disconnected
+        }.onEach {
+            ensureActive()
+            Log.i("ConnectedViewModel", "Waiting $reconnectDelay to reconnect...")
+            delay(reconnectDelay)
+            connect()
+        }.launchIn(this)
+    }
 
-    private val _angularVelocityChannel = Channel<Float?>()
-    var angularVelocityFlow: StateFlow<Float?> =
-        merge(_angularVelocityChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
-            it.angularVelocityFlow
-        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+    private fun CoroutineScope.connect() {
+        launch {
+            Log.d("ConnectedViewModel", "Connecting")
+            try {
+                peripheral.connect()
+                autoConnect.value = true
+                Log.d("ConnectedViewModel DEBUG", "Services: ")
+                if (peripheral.services != null) {
+                    for (service in peripheral.services!!) {
+                        Log.d("ConnectedViewModel DEBUG", "  ${service.serviceUuid}")
+                        if (service.serviceUuid.toString() == controllerServiceUuid) {
+                            Log.d("ConnectedViewModel DEBUG", "    Characteristics: ")
+                            for (characteristic in service.characteristics) {
+                                Log.d(
+                                    "ConnectedViewModel DEBUG",
+                                    "      ${characteristic.characteristicUuid}"
+                                )
+                            }
+                        }
+                    }
+                }
+                mechaFerris.notifyAll()
+            } catch (e: ConnectionLostException) {
+                autoConnect.value = false
+                Log.w("ConnectedViewModel", "Connection attempt failed", e)
+            }
+        }
+    }
 
-    private val _motionVectorChannel = Channel<Vector3?>()
-    var motionVectorFlow: StateFlow<Vector3?> =
-        merge(_motionVectorChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
-            it.motionVectorFlow
-        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+    val viewState: Flow<ViewState> = state
+        .flatMapLatest { (bluetoothAvailability, state) ->
+            if (bluetoothAvailability is Bluetooth.Availability.Unavailable) {
+                return@flatMapLatest flowOf(ViewState.BluetoothUnavailable)
+            }
+            when (state) {
+                is State.Connecting -> flowOf(ViewState.Connecting)
+                State.Connected -> combine(
+                    peripheral.remoteRssi(),
+                    mechaFerris.batteryLevel,
+                    mechaFerris.stateMachine,
+                    mechaFerris.animationFactor,
+                    mechaFerris.angularVelocity,
+                    mechaFerris.motionVector,
+                    mechaFerris.bodyTranslation,
+                    mechaFerris.bodyRotation,
+                    mechaFerris.legRadius
+                ) { args ->
+                    val (rssi, batteryLevel, stateMachine, animationFactor, angularVelocity, motionVector, bodyTranslation, bodyRotation, legRadius) = args
+                    ViewState.Connected(
+                        rssi as Int,
+                        batteryLevel as UInt,
+                        stateMachine as StateMachine,
+                        animationFactor as Float,
+                        angularVelocity as Float,
+                        motionVector as Vector3,
+                        bodyTranslation as Translation,
+                        bodyRotation as Quaternion,
+                        legRadius as Float
+                    )
+                }
 
-    private val _bodyTranslationChannel = Channel<Translation?>()
-    var bodyTranslationFlow: StateFlow<Translation?> =
-        merge(_bodyTranslationChannel.receiveAsFlow(), bleServiceData.flatMapNullable {
-            it.bodyTranslationFlow
-        }).stateIn(viewModelScope, SharingStarted.Lazily, null)
+                State.Disconnecting -> flowOf(ViewState.Disconnecting)
+                is State.Disconnected -> flowOf(ViewState.Disconnected)
+            }
+        }
 
-    private val _bodyRotationChannel = Channel<Quaternion?>()
-    var bodyRotationFlow: StateFlow<Quaternion?> = merge(_bodyRotationChannel.receiveAsFlow(),
-        bleServiceData.flatMapNullable { it.bodyRotationFlow }).stateIn(
-        viewModelScope, SharingStarted.Lazily, null
-    )
-
-    private val _legRadiusChannel = Channel<Float?>()
-    var legRadiusFlow: StateFlow<Float?> = merge(_legRadiusChannel.receiveAsFlow(),
-        bleServiceData.flatMapNullable { it.legRadiusFlow }).stateIn(
-        viewModelScope, SharingStarted.Lazily, null
-    )
-
-    private val _batteryUpdateIntervalMsChannel = Channel<UInt?>()
-    var batteryUpdateIntervalMsFlow: StateFlow<UInt?> =
-        merge(
-            _batteryUpdateIntervalMsChannel.receiveAsFlow(),
-            bleServiceData.flatMapNullable { it.batteryUpdateIntervalMsFlow }).stateIn(
-            viewModelScope, SharingStarted.Lazily, null
-        )
+    val batteryLevel = mechaFerris.batteryLevel
+    val stateMachine = mechaFerris.stateMachine
+    val animationFactor = mechaFerris.animationFactor
+    val angularVelocity = mechaFerris.angularVelocity
+    val motionVector = mechaFerris.motionVector
+    val bodyTranslation = mechaFerris.bodyTranslation
+    val bodyRotation = mechaFerris.bodyRotation
+    val legRadius = mechaFerris.legRadius
 
     var scaffoldState: ScaffoldState by mutableStateOf(ScaffoldState.Home)
-    val calibratingViewModel = CalibratingViewModel()
-    val height: StateFlow<Float> = bodyTranslationFlow.map {
-        it?.y ?: 75.0f
+    val calibratingViewModel =
+        CalibratingViewModel(mechaFerris.getCalibrationResult, { context, leg, joint, kind ->
+            this@ConnectedViewModel.getCalibration(context, leg, joint, kind)
+        }, mechaFerris.setCalibrationResult, { context, leg, joint, kind, pulse ->
+            this@ConnectedViewModel.setCalibration(context, leg, joint, kind, pulse)
+        })
+    val height: StateFlow<Float> = viewState.map {
+        when (it) {
+            is ViewState.Connected -> it.bodyTranslation.y
+            else -> 0.0f
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), 75.0f)
 
     // for (update in getCalibrationDatumChangeNotifications) {
@@ -116,6 +214,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
     //     }
     // }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     suspend fun onClickAction(context: Context, scaffoldState: ScaffoldState) {
         when (scaffoldState) {
             ScaffoldState.Home -> {
@@ -139,31 +238,61 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         }
     }
 
+    @OptIn(ExperimentalUnsignedTypes::class)
     suspend fun setStateMachine(
         context: Context,
         stateMachine: StateMachine,
         onUpdate: () -> Unit = {},
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setStateMachine(
-                        it, stateMachine
-                    )
-                } != null) {
-                onUpdate()
-                _stateMachineChannel.send(stateMachine)
-            }
+            mechaFerris.setStateMachine(stateMachine)
+            onUpdate()
         } catch (e: Exception) {
             Toast.makeText(context, "Failed to set new state: ${e.message}", Toast.LENGTH_LONG)
                 .show()
         }
     }
 
+    suspend fun getCalibration(context: Context, leg: UByte, joint: UByte, kind: UByte) {
+        try {
+            mechaFerris.requestCalibrationData(leg, joint, kind)
+            mechaFerris.sync(false)
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                "Failed to get calibration result: ${e.message}",
+                Toast.LENGTH_LONG
+            )
+                .show()
+        }
+    }
+
+    suspend fun setCalibration(
+        context: Context,
+        leg: UByte,
+        joint: UByte,
+        kind: UByte,
+        pulse: Float
+    ): Float? {
+        return try {
+            Log.i("ConnectedViewModel", "setCalibration: $leg, $joint, $kind, $pulse")
+            mechaFerris.setCalibrationPulse(leg, joint, kind, pulse)
+            mechaFerris.sync(false)
+            pulse
+        } catch (e: Exception) {
+            Toast.makeText(
+                context,
+                "Failed to set calibration result: ${e.message}",
+                Toast.LENGTH_LONG
+            )
+                .show()
+            null
+        }
+    }
+
     suspend fun sync(context: Context, all: Boolean = false) {
         try {
-            if (deviceAddress?.let { bleServiceDataState.value?.sync(it, all) } != null) {
-                Toast.makeText(context, "Synced", Toast.LENGTH_LONG).show()
-            }
+            mechaFerris.sync(all)
         } catch (e: Exception) {
             Toast.makeText(context, "Failed to sync: ${e.message}", Toast.LENGTH_LONG).show()
         }
@@ -173,13 +302,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         context: Context, animationFactor: Float
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setAnimationFactor(
-                        it, animationFactor
-                    )
-                } != null) {
-                _animationFactorChannel.send(animationFactor)
-            }
+            mechaFerris.setAnimationFactor(animationFactor)
         } catch (e: Exception) {
             Toast.makeText(
                 context, "Failed to set new animation factor: ${e.message}", Toast.LENGTH_LONG
@@ -191,13 +314,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         context: Context, angularVelocity: Float
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setAngularVelocity(
-                        it, angularVelocity
-                    )
-                } != null) {
-                _angularVelocityChannel.send(angularVelocity)
-            }
+            mechaFerris.setAngularVelocity(angularVelocity)
         } catch (e: Exception) {
             Toast.makeText(
                 context, "Failed to set new angular velocity: ${e.message}", Toast.LENGTH_LONG
@@ -209,13 +326,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         context: Context, motionVector: Vector3
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setMotionVector(
-                        it, motionVector
-                    )
-                } != null) {
-                _motionVectorChannel.send(motionVector)
-            }
+            mechaFerris.setMotionVector(motionVector)
         } catch (e: Exception) {
             Toast.makeText(
                 context, "Failed to set new motion vector: ${e.message}", Toast.LENGTH_LONG
@@ -227,13 +338,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         context: Context, bodyTranslation: Translation
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setBodyTranslation(
-                        it, bodyTranslation
-                    )
-                } != null) {
-                _bodyTranslationChannel.send(bodyTranslation)
-            }
+            mechaFerris.setBodyTranslation(bodyTranslation)
         } catch (e: Exception) {
             Toast.makeText(
                 context, "Failed to set new body translation: ${e.message}", Toast.LENGTH_LONG
@@ -245,13 +350,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         context: Context, bodyRotation: Quaternion
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setBodyRotation(
-                        it, bodyRotation
-                    )
-                } != null) {
-                _bodyRotationChannel.send(bodyRotation)
-            }
+            mechaFerris.setBodyRotation(bodyRotation)
         } catch (e: Exception) {
             Toast.makeText(
                 context, "Failed to set new body rotation: ${e.message}", Toast.LENGTH_LONG
@@ -263,13 +362,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         context: Context, legRadius: Float
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setLegRadius(
-                        it, legRadius
-                    )
-                } != null) {
-                _legRadiusChannel.send(legRadius)
-            }
+            mechaFerris.setLegRadius(legRadius)
         } catch (e: Exception) {
             Toast.makeText(context, "Failed to set new leg radius: ${e.message}", Toast.LENGTH_LONG)
                 .show()
@@ -280,18 +373,7 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         context: Context, batteryUpdateIntervalMs: UInt
     ) {
         try {
-            if (deviceAddress?.let {
-                    bleServiceDataState.value?.setBatteryUpdateIntervalMs(
-                        it, batteryUpdateIntervalMs
-                    )
-                } != null) {
-                _batteryUpdateIntervalMsChannel.send(batteryUpdateIntervalMs)
-                Toast.makeText(
-                    context,
-                    "Set new battery update interval: $batteryUpdateIntervalMs",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
+            mechaFerris.setBatteryUpdateIntervalMs(batteryUpdateIntervalMs)
         } catch (e: Exception) {
             Toast.makeText(
                 context,
@@ -301,15 +383,62 @@ class ConnectedViewModel(bleServiceData: Flow<BleService.BluetoothServiceBinder?
         }
     }
 
+    private val stateMachineLiveData: LiveData<StateMachine> =
+        mechaFerris.stateMachine.asLiveData(peripheralScope.coroutineContext)
+
+    @OptIn(ExperimentalUnsignedTypes::class)
     suspend fun onPlayPause(context: Context) {
-        if (stateMachineFlow.value == StateMachine.PAUSED && previousStateMachine != null) {
-            setStateMachine(context, previousStateMachine!!) {
-                previousStateMachine = null
+        val stateMachine = stateMachineLiveData.value
+        try {
+            when (stateMachine) {
+                StateMachine.PAUSED -> {
+                    if (previousState != null) {
+                        mechaFerris.setStateMachine(previousState!!)
+                    } else {
+                        mechaFerris.setStateMachine(StateMachine.LOOPING)
+                    }
+                    previousState = null
+                }
+
+                else -> {
+                    previousState = stateMachine
+                    mechaFerris.setStateMachine(StateMachine.PAUSED)
+                }
             }
-        } else {
-            setStateMachine(context, StateMachine.PAUSED) {
-                previousStateMachine = stateMachineFlow.value
-            }
+        } catch (exception: Exception) {
+            Toast.makeText(
+                context,
+                "Failed to set new state: ${exception.message}",
+                Toast.LENGTH_LONG
+            )
+                .show()
         }
     }
+}
+
+private operator fun <T : Any> Array<T>.component6(): Any {
+    return this[5]
+}
+
+private operator fun <T : Any> Array<T>.component7(): Any {
+    return this[6]
+}
+
+private operator fun <T : Any> Array<T>.component8(): Any {
+    return this[7]
+}
+
+private operator fun <T : Any> Array<T>.component9(): Any {
+    return this[8]
+}
+
+private fun Peripheral.remoteRssi() = flow {
+    while (true) {
+        val rssi = rssi()
+        Log.d("ConnectedViewModel Peripheral", "RSSI: $rssi")
+        emit(rssi)
+        delay(1_000L)
+    }
+}.catch { cause ->
+    if (cause !is NotReadyException) throw cause
 }

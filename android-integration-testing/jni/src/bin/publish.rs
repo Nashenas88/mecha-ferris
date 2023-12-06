@@ -84,6 +84,7 @@ fn android_jni_dir_path(android_jni_lib_folder: &str) -> String {
     android_jni_file_path
 }
 
+#[cfg(feature = "host")]
 fn crate_file_path_for_host(project_dir_path: &str) -> String {
     let mut crate_lib_file_path = project_dir_path.to_owned();
 
@@ -134,6 +135,7 @@ fn publish_jni_lib_to_android_project() -> Result<String> {
     let project_dir_path = project_dir_path();
 
     println!("publishing");
+    #[cfg(feature = "host")]
     {
         let crate_lib_file_path = crate_file_path_for_host(&project_dir_path);
         let android_jni_lib_folder = "host"; // x86_64?

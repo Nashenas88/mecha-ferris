@@ -43,8 +43,6 @@ class RustLibrary {
             System.loadLibrary("rust_kotlin")
         }
 
-        external fun SendBatteryLevel(value: UInt): ByteArray
-
         external fun ReadBatteryLevel(input: ByteArray): UInt
 
         external fun SendSync(value: Boolean): ByteArray

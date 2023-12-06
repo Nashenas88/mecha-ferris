@@ -13,5 +13,8 @@ bluetooth-comms = { path = "../../bluetooth-comms" }
 manager = { path = "../manager" }
 anyhow = "1.0.75"
 
+[features]
+host = []
+
 [build-dependencies]
 manager = { path = "../manager" }

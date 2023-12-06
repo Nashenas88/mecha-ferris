@@ -19,7 +19,9 @@ pub mod joint;
 pub mod log;
 
 const DEFAULT_ANIM_TIME: u32 = 1000;
+const CALIB_ANIM_TIME: u32 = 100;
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum CalKind {
     Min,
     Mid,
@@ -27,11 +29,12 @@ pub enum CalKind {
     Home,
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct CalibState {
     pub leg: usize,
     pub joint: usize,
     pub cal_kind: CalKind,
-    pub anim: Anim<f32, Bezier, DEFAULT_ANIM_TIME>,
+    pub anim: Anim<f32, Bezier, CALIB_ANIM_TIME>,
 }
 
 pub struct State<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> {
@@ -57,7 +60,6 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> State<NUM_SERVOS_PE
         &mut self,
         delta: f32,
         servo_cluster: &mut ServoCluster<{ NUM_SERVOS as usize }, PIO0, SM0, AngularCalibration>,
-        joints: &mut [[Joint; NUM_SERVOS_PER_LEG]; NUM_LEGS],
     ) {
         if let Some(ref mut anim) = self.translation_anim {
             self.live_state.body_translation = anim.proceed(delta);
@@ -77,10 +79,18 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> State<NUM_SERVOS_PE
                 self.leg_radius_anim = None;
             }
         }
-        if let Some(ref mut cal_update) = self.calib_update {
+        if let (Some(cal_update), joints) =
+            (self.calib_update.as_mut(), &mut self.live_state.joints)
+        {
             let joint = &mut joints[cal_update.leg][cal_update.joint];
             let calibration = joint.cal_mut();
             let pulse = cal_update.anim.proceed(delta);
+            log::info!(
+                "Proceeded by {} to {} of {}",
+                delta,
+                cal_update.anim.elapsed(),
+                cal_update.anim.duration()
+            );
             match cal_update.cal_kind {
                 CalKind::Min => {
                     calibration.cal.inner_mut().set_min_pulse(pulse);
@@ -95,6 +105,7 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> State<NUM_SERVOS_PE
                     calibration.home_pulse = pulse;
                 }
             }
+            log::info!("Animating calibration {:?} to {}", cal_update, pulse);
             *servo_cluster.calibration_mut(joint.servo()) = joint.calibrating_cal().cal;
             servo_cluster.set_pulse(joint.servo(), pulse, true);
             if cal_update.anim.finished() {
@@ -104,6 +115,7 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> State<NUM_SERVOS_PE
     }
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Anim<T, E, const UDURATION_MS: u32> {
     start: T,
     end: T,
@@ -128,6 +140,14 @@ where
             elapsed_ms: 0.0,
             _phantom: PhantomData,
         }
+    }
+
+    pub fn elapsed(&self) -> f32 {
+        self.elapsed_ms
+    }
+
+    pub const fn duration(&self) -> f32 {
+        Self::DURATION_MS
     }
 
     pub fn proceed(&mut self, t: f32) -> T {
@@ -171,6 +191,7 @@ pub trait Ease {
     fn ease(t: f32) -> f32;
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Bezier;
 
 impl Ease for Bezier {

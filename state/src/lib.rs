@@ -1,6 +1,7 @@
 #![no_std]
 
 pub use nalgebra::{Quaternion, Translation3, Unit, UnitQuaternion, Vector3};
+use serde::{Deserialize, Serialize};
 
 #[derive(Copy, Clone)]
 pub struct JointDto {
@@ -54,13 +55,13 @@ pub struct RobotState<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
     /// How often to send battery updates to the host.
     pub battery_update_interval_ms: u32,
     /// Joint details,
-    pub joints: Option<[[J; NUM_SERVOS_PER_LEG]; NUM_LEGS]>,
+    pub joints: [[J; NUM_SERVOS_PER_LEG]; NUM_LEGS],
 }
 
 impl<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
     RobotState<J, NUM_SERVOS_PER_LEG, NUM_LEGS>
 {
-    pub const fn new() -> Self {
+    pub const fn new(joints: [[J; NUM_SERVOS_PER_LEG]; NUM_LEGS]) -> Self {
         Self {
             state_machine: StateMachine::Paused,
             animation_factor: 1.0,
@@ -73,28 +74,35 @@ impl<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
             leg_radius: 0.0,
             battery_level: 0,
             battery_update_interval_ms: 0,
-            joints: None,
+            joints,
         }
     }
 
-    pub fn joint(&self, leg: usize, joint: usize) -> Option<&J> {
-        self.joints.as_ref()?.get(leg)?.get(joint)
+    pub fn joint<L: Into<usize>, Jo: Into<usize>>(&self, leg: L, joint: Jo) -> Option<&J> {
+        self.joints.as_ref().get(leg.into())?.get(joint.into())
     }
 
-    pub fn joint_mut(&mut self, leg: usize, joint: usize) -> Option<&mut J> {
-        self.joints.as_mut()?.get_mut(leg)?.get_mut(joint)
+    pub fn joint_mut<L: Into<usize>, Jo: Into<usize>>(
+        &mut self,
+        leg: L,
+        joint: Jo,
+    ) -> Option<&mut J> {
+        self.joints
+            .as_mut()
+            .get_mut(leg.into())?
+            .get_mut(joint.into())
     }
 }
 
-impl<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> Default
-    for RobotState<J, NUM_SERVOS_PER_LEG, NUM_LEGS>
-{
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl<J, const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> Default
+//     for RobotState<J, NUM_SERVOS_PER_LEG, NUM_LEGS>
+// {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 #[repr(u8)]
 pub enum StateMachine {

@@ -8,55 +8,68 @@ edition = "2021"
 [dependencies]
 defmt = { version = "0.3.5", optional = true }
 defmt-rtt = { version = "0.4.0", optional = true }
-panic-probe = { version = "0.3.0", features = ["print-defmt"] }
+panic-probe = { version = "0.3.0", optional = true }
+panic-halt = { version = "0.2.0", optional = true }
 cortex-m = "0.7.7"
 cortex-m-rt = "0.7.3"
-futures = { version = "0.3.27", default-features = false }
+futures = { version = "0.3.27", default-features = false, features = [
+    "async-await",
+] }
 byte-strings-proc_macros = "0.3.1"
 critical-section = "1.1.1"
 state = { path = "../state" }
 communication = { path = "../communication" }
-nalgebra = { version = "0.32.2", default-features = false }
-scapegoat = "2.3.0"
-static_cell = "1.0.0"
+nalgebra = { version = "0.32.2", default-features = false, features = [
+    "serde-serialize-no-std",
+] }
+static_cell = "2.0.0"
 bluetooth-comms = { path = "../bluetooth-comms" }
-
+heapless = "0.7.0"
+postcard = { version = "1.0.8", features = ["heapless"] }
 
 [features]
-defmt = ["dep:defmt", "defmt-rtt", "communication/defmt"]
+default = ["dep:panic-halt"]
+defmt = [
+    "dep:defmt",
+    "defmt-rtt",
+    "communication/defmt",
+    "bluetooth-comms/defmt",
+    "panic-probe/print-defmt",
+    "embassy-executor/defmt",
+    "embassy-sync/defmt",
+    "embassy-time/defmt",
+    "embassy-time/defmt-timestamp-uptime",
+    "embassy-nrf/defmt",
+    "nrf-softdevice/defmt",
+    "postcard/use-defmt",
+]
+pairing = ["nrf-softdevice/ble-sec"]
 
 [dependencies.embassy-executor]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "a47fb42962fffda51efbce072087c8ca2504a225"
-features = [
-    "defmt",
-    "nightly",
-    "integrated-timers",
-    "executor-thread",
-    "arch-cortex-m",
-]
+rev = "5bc75578260f4c644cc060e6458a05d7fc0ffb41"
+features = ["nightly", "integrated-timers", "executor-thread", "arch-cortex-m"]
 
 [dependencies.embassy-sync]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "a47fb42962fffda51efbce072087c8ca2504a225"
-features = ["defmt", "nightly"]
+rev = "5bc75578260f4c644cc060e6458a05d7fc0ffb41"
+features = ["nightly"]
 
 [dependencies.embassy-time]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "a47fb42962fffda51efbce072087c8ca2504a225"
-features = ["defmt", "nightly", "defmt-timestamp-uptime"]
+rev = "5bc75578260f4c644cc060e6458a05d7fc0ffb41"
+features = ["nightly"]
 
 [dependencies.embassy-nrf]
 git = "https://github.com/embassy-rs/embassy.git"
-rev = "a47fb42962fffda51efbce072087c8ca2504a225"
-features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "nightly"]
+rev = "5bc75578260f4c644cc060e6458a05d7fc0ffb41"
+features = ["nrf52840", "time-driver-rtc1", "gpiote", "nightly"]
 
 [dependencies.nrf-softdevice]
 git = "https://github.com/embassy-rs/nrf-softdevice.git"
-rev = "6415c63ac171f6f34f0ce0f08290d52b5cfa2a06"
+rev = "c9142d56611f07743ff95b1ac98518e396447a6e"
 features = [
     "nightly",
-    "defmt",
     "nrf52840",
     "s140",
     "ble-peripheral",
@@ -67,7 +80,7 @@ features = [
 
 [dependencies.nrf-softdevice-s140]
 git = "https://github.com/embassy-rs/nrf-softdevice.git"
-rev = "6415c63ac171f6f34f0ce0f08290d52b5cfa2a06"
+rev = "c9142d56611f07743ff95b1ac98518e396447a6e"
 
 # cargo build/run
 [profile.dev]
@@ -75,7 +88,7 @@ codegen-units = 1
 debug = 2
 debug-assertions = true
 incremental = false
-opt-level = 3
+opt-level = 1
 overflow-checks = true
 
 # cargo build/run --release

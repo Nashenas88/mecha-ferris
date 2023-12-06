@@ -8,11 +8,17 @@ edition = "2021"
 [dependencies]
 defmt = { version = "0.3", optional = true }
 state = { path = "../state" }
-nalgebra = { version = "0.32.2", default-features = false, features = ["libm"] }
+serde = { version = "1.0.193", default-features = false, features = ["derive"] }
+nalgebra = { version = "0.32.2", default-features = false, features = [
+    "serde-serialize-no-std",
+] }
+postcard = "1.0.8"
+
 
 [dev-dependencies]
 proptest = "1.1.0"
 test-case = "3.1.0"
+ssmarshal = "1.0.0"
 
 [features]
 defmt = ["dep:defmt", "state/defmt"]

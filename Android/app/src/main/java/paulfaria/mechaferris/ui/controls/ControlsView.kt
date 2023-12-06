@@ -16,6 +16,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import paulfaria.mechaferris.ConnectedViewModel
 import paulfaria.mechaferris.Translation
+import paulfaria.mechaferris.ViewState
 
 @Composable
 fun ControlsView(viewModel: ConnectedViewModel) {
@@ -24,40 +25,52 @@ fun ControlsView(viewModel: ConnectedViewModel) {
     val height = remember {
         mutableFloatStateOf(deviceHeight)
     }
-    val deviceAnimationFactor by viewModel.animationFactorFlow.collectAsStateWithLifecycle()
-    val animationFactor = remember {
-        mutableFloatStateOf(deviceAnimationFactor ?: 1.0f)
+    val viewState by viewModel.viewState.collectAsStateWithLifecycle(null)
+    val deviceAnimationFactor = when (viewState) {
+        is ViewState.Connected -> (viewState as ViewState.Connected).animationFactor
+        else -> null
     }
-
-    val bodyTranslation by viewModel.bodyTranslationFlow.collectAsStateWithLifecycle()
+    val animationFactor by viewModel.requestedAnimationFactor.collectAsStateWithLifecycle()
+    val bodyTranslation = when (viewState) {
+        is ViewState.Connected -> (viewState as ViewState.Connected).bodyTranslation
+        else -> null
+    }
     val context = LocalContext.current
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = "Requested Height: ${height.floatValue}", textAlign = TextAlign.Center)
         Text(text = "Device Height: $deviceHeight", textAlign = TextAlign.Center)
-        Slider(value = height.floatValue, onValueChange = {
-            height.floatValue = it
-            coroutineScope.launch {
-                val new =
-                    bodyTranslation?.copy(y = height.floatValue)
-                        ?: Translation(
-                            0.0f,
-                            height.floatValue,
-                            0.0f
-                        )
-                viewModel.setBodyTranslation(context, new)
-                viewModel.sync(context)
-            }
-        }, valueRange = 80.0f..250.0f)
+        Slider(
+            value = height.floatValue,
+            onValueChange = {
+                height.floatValue = it
+            },
+            onValueChangeFinished = {
+                coroutineScope.launch {
+                    val new =
+                        bodyTranslation?.copy(y = height.floatValue)
+                            ?: Translation(
+                                0.0f,
+                                height.floatValue,
+                                0.0f
+                            )
+                    viewModel.setBodyTranslation(context, new)
+                    viewModel.sync(context)
+                }
+            }, valueRange = 80.0f..250.0f
+        )
         Text(
-            text = "Requested Animation Factor: ${animationFactor.floatValue}",
+            text = "Requested Animation Factor: $animationFactor",
             textAlign = TextAlign.Center
         )
-        Text(text = "Device Animation Factor: $deviceAnimationFactor", textAlign = TextAlign.Center)
-        Slider(value = animationFactor.floatValue, onValueChange = {
-            animationFactor.floatValue = it
-                coroutineScope.launch {
-                    viewModel.setAnimationFactor(context, animationFactor.floatValue)
-                    viewModel.sync(context)
+        Text(
+            text = "Device Animation Factor: $deviceAnimationFactor",
+            textAlign = TextAlign.Center
+        )
+        Slider(value = animationFactor, onValueChange = {
+            viewModel.mutRequestedAnimationFactor.value = it
+            coroutineScope.launch {
+                viewModel.setAnimationFactor(context, animationFactor)
+                viewModel.sync(context)
             }
         }, valueRange = 0.1f..3.0f)
     }
@@ -66,5 +79,5 @@ fun ControlsView(viewModel: ConnectedViewModel) {
 @Preview(showBackground = true)
 @Composable
 fun ControlsViewPreview() {
-    ControlsView(ConnectedViewModel())
+    ControlsView(ConnectedViewModel("Mecha Ferris", "abc123"))
 }

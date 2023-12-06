@@ -1,0 +1,39 @@
+@startuml system_comms
+title "System Communication"
+participant User
+participant Android as App
+participant "ItsyBitsy nrf52840" as Nrf
+participant "Servo 2040" as Rp
+User -> App : Connect
+activate App
+activate Nrf
+activate Rp
+App -> Nrf : NotifyAll
+Nrf -> Rp : NotifyAll
+Rp --> Nrf : BatteryLevel
+Rp --> Nrf : AnimationFactor
+Rp --> Nrf : AngularVelocity
+Rp --> Nrf : MotionVector
+Rp --> Nrf : BodyTranslation
+Rp --> Nrf : BodyRotation
+Rp --> Nrf : LegRadius
+Rp --> Nrf : GetCalibration (6 x 10 (3, 3, 4))
+Nrf --> App : BatteryLevel
+Nrf --> App : AnimationFactor
+Nrf --> App : AngularVelocity
+Nrf --> App : MotionVector
+Nrf --> App : BodyTranslation
+Nrf --> App : BodyRotation
+Nrf --> App : LegRadius
+Nrf --> App : GetCalibration (6 x 10 (3, 3, 4))
+newpage
+App -> Nrf : Sync
+Nrf -> Rp : AnimationFactor
+Nrf -> Rp : AngularVelocity
+Nrf -> Rp : MotionVector
+Nrf -> Rp : BodyTranslation
+Nrf -> Rp : BodyRotation
+Nrf -> Rp : LegRadius
+Nrf -> Rp : SetCalibration (6 x 10 (3, 3, 4))
+newpage
+@enduml
