@@ -1,0 +1,32 @@
+name: Rust
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Install and Setup Rust toolchains
+      run: |
+        rustup update --no-self-update stable
+        rustup update --no-self-update nightly
+        # Add target for RP2040
+        rustup target add thumbv6m-none-eabi
+        # Add target for nrf52840
+        rustup +nightly target add thumbv7em-none-eabihf
+        rustup default stable
+        pushd nrf-comms; rustup override set nightly; popd
+    - name: Check
+      run: make check
+    - name: Run tests
+      run: make test
