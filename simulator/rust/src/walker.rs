@@ -14,6 +14,8 @@ const BODY_RADIUS: f32 = 75.0;
 const DEFAULT_RADIUS: f32 = BODY_RADIUS + DefaultConsts::COXA_LENGTH + 20.0;
 const DEFAULT_HEIGHT: f32 = 90.0;
 // const HEIGHT_MOVEMENT: f64 = 10.0;
+const NUM_LEGS: usize = 6;
+const NUM_SERVOS_PER_LEG: usize = 3;
 
 fn servo_name<T, C>(leg: &MechaLeg<f32, T, C>) -> &'static str {
     match leg.idx() {
@@ -63,7 +65,7 @@ pub struct Walker {
     target_coxa_space: NodePath,
     #[property]
     target_femur_space: NodePath,
-    robot_state: RobotState<(), 3, 6>,
+    robot_state: RobotState<(), NUM_SERVOS_PER_LEG, NUM_LEGS>,
     tracking_nodes: Vec<Ref<CSGSphere>>,
 }
 
@@ -79,7 +81,7 @@ impl Walker {
 
     /// The "constructor" of the class.
     fn new(_owner: &Spatial) -> Self {
-        let mut state = RobotState::new();
+        let mut state = RobotState::new([[(); NUM_SERVOS_PER_LEG]; NUM_LEGS]);
         state.leg_radius = DEFAULT_RADIUS * 1.3;
         state.body_translation.y = DEFAULT_HEIGHT;
         state.state_machine = StateMachine::Homing;
@@ -152,7 +154,7 @@ impl Walker {
         let body = body_from_node(&safe_node);
         body.set_radius(radius);
 
-        for i in 0..6 {
+        for i in 0..NUM_LEGS {
             let node: Ref<Node> = unsafe { owner.upcast::<Node>().assume_shared() };
             let safe_node = unsafe { node.assume_safe() };
             let safe_node = safe_node.get_node(servo_base(i as u8)).unwrap();
