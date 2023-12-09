@@ -5,18 +5,26 @@ use crate::animation::{Animation, AnimationManager};
 use crate::leg::LegError;
 use crate::{ExpensiveMath, Leg, LegConsts};
 
+const NUM_LEGS: usize = 6;
+
 pub struct Walking<T, C> {
     animation_manager: AnimationManager,
-    legs: [MechaLeg<f32, T, C>; 6],
+    legs: [MechaLeg<f32, T, C>; NUM_LEGS],
     body_radius: f32,
 }
 
 impl<T, C> Walking<T, C> {
     pub fn new(body_radius: f32) -> Self {
-        let mut legs = [MechaLeg::default(); 6];
-        for (i, leg) in legs.iter_mut().enumerate() {
-            leg.idx = i as u8;
+        let mut legs = [MechaLeg::default(); NUM_LEGS];
+        let mut i = 0;
+        while i < NUM_LEGS {
+            legs[i].idx = i as u8;
+            i += 1;
         }
+        // TODO use this for loop when const for is stable.
+        // for (i, leg) in legs.iter_mut().enumerate() {
+        //     leg.idx = i as u8;
+        // }
         Self {
             animation_manager: AnimationManager::new(),
             // walking_radius: initial_walking_radius,

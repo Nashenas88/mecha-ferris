@@ -65,15 +65,18 @@ class CalibratingViewModel @OptIn(ExperimentalUnsignedTypes::class) constructor(
     val onSetCalibration: suspend (Context, UByte, UByte, UByte, Float) -> Float?,
 ) : ViewModel() {
     companion object {
-        val LEG_OPTIONS = listOf("1", "2", "3", "4", "5", "6")
-        val JOINT_OPTIONS = listOf("Coxa", "Femur", "Tibia")
-        val SHORT_KIND_OPTIONS = listOf("Min", "Mid", "Max")
-        val LONG_KIND_OPTIONS = listOf("Home", "Min", "Mid", "Max")
+        val LEG_OPTIONS = listOf("1", "2", "3", "4", "5", "6").mapIndexed { index, value -> Pair(value, index)}
+        val JOINT_OPTIONS = listOf("Coxa", "Femur", "Tibia").mapIndexed { index, value -> Pair(value, 2 - index)}
+        val SHORT_KIND_OPTIONS = listOf("Min", "Mid", "Max").mapIndexed { index, value -> Pair(value, index)}
+        val LONG_KIND_OPTIONS = listOf(Pair("Home", 3)).plus(SHORT_KIND_OPTIONS)
     }
 
     val leg = mutableIntStateOf(0)
+    val legValue = derivedStateOf { LEG_OPTIONS[leg.intValue].second }
     val joint = mutableIntStateOf(0)
+    val jointValue = derivedStateOf { JOINT_OPTIONS[joint.intValue].second }
     val kind = mutableIntStateOf(0)
+    val kindValue = derivedStateOf { kindOptions()[kind.intValue].second }
     val enabled = mutableStateOf(false)
     val pulse = mutableFloatStateOf(1500.0f)
 
@@ -132,7 +135,7 @@ class CalibratingViewModel @OptIn(ExperimentalUnsignedTypes::class) constructor(
             Log.i("CalibratingViewModel", "Completed all gets with $cause") }
     }
 
-    fun kindOptions(): List<String> {
+    fun kindOptions(): List<Pair<String, Int>> {
         return when (joint.intValue) {
             // Coxa or Femur
             0, 1 -> SHORT_KIND_OPTIONS
@@ -203,8 +206,8 @@ fun Spinner(
                 .menuAnchor()
         )
         ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            options.forEachIndexed { index, _ ->
-                DropdownMenuItem(text = { Text(text = options[index]) }, onClick = {
+            options.forEachIndexed { index, text ->
+                DropdownMenuItem(text = { Text(text = text) }, onClick = {
                     expanded = false
                     onSelected(index)
                 })
@@ -245,6 +248,9 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
     val kind = rememberSaveable {
         viewModel.kind
     }
+    val legValue by remember { viewModel.legValue }
+    val jointValue by remember { viewModel.jointValue }
+    val kindValue by remember { viewModel.kindValue }
     val modelPulse by remember {
         derivedStateOf {
             val index =
@@ -259,12 +265,12 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
             .padding(12.dp)
     ) {
 
-        Spinner(options = CalibratingViewModel.LEG_OPTIONS, label = "Leg", selected = leg.intValue,
+        Spinner(options = CalibratingViewModel.LEG_OPTIONS.map { it.first }, label = "Leg", selected = leg.intValue,
             onSelected = {
                 leg.intValue = it
             })
         Spacer(modifier = Modifier.height(12.dp))
-        Spinner(options = CalibratingViewModel.JOINT_OPTIONS,
+        Spinner(options = CalibratingViewModel.JOINT_OPTIONS.map { it.first },
             label = "Joint",
             selected = joint.intValue,
             onSelected = {
@@ -278,7 +284,7 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
             })
         Spacer(modifier = Modifier.height(12.dp))
         Spinner(
-            options = viewModel.kindOptions(), label = "Calibration Kind",
+            options = viewModel.kindOptions().map { it.first }, label = "Calibration Kind",
             selected = kind.intValue,
             onSelected = {
                 kind.intValue = it
@@ -298,9 +304,9 @@ fun CalibratingView(viewModel: CalibratingViewModel) {
                         coroutineScope.launch {
                             viewModel.onSetCalibration(
                                 localContext,
-                                leg.intValue.toUByte(),
-                                joint.intValue.toUByte(),
-                                kind.intValue.toUByte(),
+                                legValue.toUByte(),
+                                jointValue.toUByte(),
+                                kindValue.toUByte(),
                                 pulse.floatValue
                             )?.let {
                                 viewModel.calibrations[kind.intValue + joint.intValue * 3 + leg.intValue * 10] =

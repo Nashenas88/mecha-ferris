@@ -29,7 +29,7 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> Default
 impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
     CommsManager<NUM_SERVOS_PER_LEG, NUM_LEGS>
 {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             buf: [0; BUF_LEN],
             written: 0,
@@ -219,7 +219,10 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize>
     ) {
         match req {
             I2cRequest::ChangeState(sm) => {
-                state.live_state.state_machine = sm;
+                if sm != state.live_state.state_machine {
+                    state.from_previous_state = Some(state.live_state.state_machine);
+                    state.live_state.state_machine = sm;
+                }
             }
             I2cRequest::SetAnimationFactor(v) => {
                 state.live_state.animation_factor = v;

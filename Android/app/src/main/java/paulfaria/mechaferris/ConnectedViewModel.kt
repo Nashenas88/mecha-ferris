@@ -133,6 +133,9 @@ class ConnectedViewModel(val deviceName: String?, val macAddress: String) :
             } catch (e: ConnectionLostException) {
                 autoConnect.value = false
                 Log.w("ConnectedViewModel", "Connection attempt failed", e)
+            } catch (e: Exception) {
+                autoConnect.value = false
+                Log.e("ConnectedViewModel", "Error during connection", e)
             }
         }
     }

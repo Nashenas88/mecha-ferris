@@ -8,7 +8,8 @@ version = "0.1.0"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 embedded-hal = { version = "0.2.5", features = ["unproven"] }
-critical-section = "1.1.0"
+cortex-m-rtic = "1.1.4"
+critical-section = "1.1.2"
 defmt = { version = "0.3.5", optional = true }
 defmt-rtt = { version = "0.4", optional = true }
 fugit = "0.3.6"
@@ -24,6 +25,7 @@ communication = { path = "../communication" }
 state = { path = "../state" }
 postcard = { version = "1.0.8", features = ["heapless"] }
 heapless = "0.7.0"
+once_cell = { version = "1.18.0", default-features = false }
 
 [features]
 default = ["panic-halt"]
@@ -36,8 +38,17 @@ defmt = [
     "panic-probe/print-defmt",
     "postcard/use-defmt",
 ]
+debug = ["defmt"]
 debug-visitor = ["defmt"]
 debug-current = ["defmt"]
+
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
+[[bin]]
+name = "rtic"
+path = "src/rtic_main.rs"
 
 [[example]]
 name = "servo_tester"
@@ -94,3 +105,6 @@ debug-assertions = false
 incremental = false
 lto = 'fat'
 opt-level = 3
+
+[patch.crates-io]
+rp2040-hal = { git = "https://github.com/nashenas88/rp-hal", branch = "i2c-irq" }

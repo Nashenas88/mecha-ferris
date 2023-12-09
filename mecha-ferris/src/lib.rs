@@ -7,7 +7,7 @@ use pimoroni_servo2040::pac::PIO0;
 use pimoroni_servo2040::NUM_SERVOS;
 use servo_pio::calibration::AngularCalibration;
 use servo_pio::servo_cluster::ServoCluster;
-use state::{RobotState, Translation3, UnitQuaternion, Vector3};
+use state::{RobotState, StateMachine, Translation3, UnitQuaternion, Vector3};
 pub mod analog;
 pub mod analog_mux;
 pub mod calibrations;
@@ -43,6 +43,7 @@ pub struct State<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> {
     pub rotation_anim: Option<Anim<UnitQuaternion<f32>, Bezier, DEFAULT_ANIM_TIME>>,
     pub leg_radius_anim: Option<Anim<f32, Bezier, DEFAULT_ANIM_TIME>>,
     pub calib_update: Option<CalibState>,
+    pub from_previous_state: Option<StateMachine>,
 }
 
 impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> State<NUM_SERVOS_PER_LEG, NUM_LEGS> {
@@ -53,6 +54,7 @@ impl<const NUM_SERVOS_PER_LEG: usize, const NUM_LEGS: usize> State<NUM_SERVOS_PE
             rotation_anim: None,
             leg_radius_anim: None,
             calib_update: None,
+            from_previous_state: None,
         }
     }
 
