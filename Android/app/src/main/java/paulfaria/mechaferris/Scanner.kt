@@ -105,7 +105,7 @@ class MechaFerris(private val peripheral: Peripheral) : Peripheral by peripheral
     val batteryLevel: Flow<UInt> = peripheral
         .observe(batteryLevelCharacteristic)
         .map { RustLibrary.ReadBatteryLevel(it) }
-        .map { Log.i("Scanner", "Got battery level: {it}"); it }
+        .map { Log.i("Scanner", "Got battery level: $it"); it }
 
     val stateMachine: Flow<StateMachine> = peripheral
         .observe(stateMachineCharacteristic)
