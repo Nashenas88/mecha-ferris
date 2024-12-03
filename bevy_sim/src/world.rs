@@ -1,16 +1,52 @@
 use avian3d::prelude::*;
 use bevy::core_pipeline::fxaa::Fxaa;
 use bevy::core_pipeline::Skybox;
+use bevy::diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin};
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::{MouseButton, MouseMotion, MouseWheel};
 use bevy::pbr::{
     DefaultOpaqueRendererMethod, ScreenSpaceReflectionsBundle, ScreenSpaceReflectionsSettings,
 };
 use bevy::prelude::*;
+use bevy::render::camera;
+use bevy::render::texture::CompressedImageFormats;
+use bevy::scene::ron::de;
 use bevy_mod_picking::prelude::*;
-use cached_path::{Cache, ProgressBar};
+use cached_path::{Cache, Options, ProgressBar};
+use iyes_perf_ui::prelude::*;
 use std::path::Path;
 use std::{fs, io};
+
+const BASE_ASSETS_URL: &str = "https://cdn.copper-robotics.com/";
+// const BASE_ASSETS_URL: &str = "../free-cad/glb/";
+const BALANCEBOT: &str = "balancebot.glb";
+const FEMUR_BRACKET: &str = "MechaFerris-FemurBracket.glb";
+const TIBIA: &str = "MechaFerris-Tibia001.glb";
+const SKYBOX: &str = "skybox.ktx2";
+const DIFFUSE_MAP: &str = "diffuse_map.ktx2";
+
+// const CUBEMAPS: &[(&str, CompressedImageFormats)] = &[
+//     (
+//         "textures/Ryfjallet_cubemap.png",
+//         CompressedImageFormats::NONE,
+//     ),
+//     (
+//         "textures/Ryfjallet_cubemap_astc4x4.ktx2",
+//         CompressedImageFormats::ASTC_LDR,
+//     ),
+//     (
+//         "textures/Ryfjallet_cubemap_bc7.ktx2",
+//         CompressedImageFormats::BC,
+//     ),
+//     (
+//         "textures/Ryfjallet_cubemap_etc2.ktx2",
+//         CompressedImageFormats::ETC2,
+//     ),
+// ];
+
+const TABLE_HEIGHT: f32 = 0.724;
+
+const PLA_DENSITY: f32 = 1.25; // kg/m^3
 
 #[derive(Resource)]
 struct CameraControl {
@@ -38,14 +74,16 @@ pub fn build_world(app: &mut App) -> &mut App {
     app.insert_resource(Msaa::Off)
         .add_plugins((
             DefaultPickingPlugins,
+            FrameTimeDiagnosticsPlugin,
+            PerfUiPlugin,
             PhysicsPlugins::default().with_length_unit(1000.0),
             // EditorPlugin::default(),
         ))
-        .insert_resource(DefaultOpaqueRendererMethod::default())
+        // .insert_resource(DefaultOpaqueRendererMethod::default())
         .insert_resource(SimulationState::Running)
         .insert_resource(CameraControl {
             rotate_sensitivity: 0.05,
-            zoom_sensitivity: 3.5,
+            zoom_sensitivity: 0.05,
             move_sensitivity: 0.01,
         })
         .insert_resource(Gravity::default())
@@ -60,17 +98,212 @@ pub fn build_world(app: &mut App) -> &mut App {
         .add_systems(PostUpdate, reset_sim)
 }
 
+fn create_symlink(src: &str, dst: &str) -> io::Result<()> {
+    let dst_path = Path::new(dst);
+
+    if dst_path.exists() {
+        fs::remove_file(dst_path)?;
+    }
+
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(src, dst)
+    }
+
+    #[cfg(windows)]
+    {
+        std::os::windows::fs::symlink_file(src, dst)
+    }
+}
+
+fn ground_setup(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+) {
+    let plane_mesh = meshes.add(Plane3d::default().mesh().size(2.0, 2.0));
+    // Chessboard Plane
+    let black_material = materials.add(StandardMaterial {
+        base_color: Color::BLACK,
+        reflectance: 0.4,
+        perceptual_roughness: 0.4,
+        ..default()
+    });
+
+    let white_material = materials.add(StandardMaterial {
+        base_color: Color::WHITE,
+        reflectance: 0.4,
+        perceptual_roughness: 0.4,
+        ..default()
+    });
+
+    for x in -3..4 {
+        for z in -3..4 {
+            commands.spawn((PbrBundle {
+                mesh: plane_mesh.clone(),
+                material: if (x + z) % 2 == 0 {
+                    black_material.clone()
+                } else {
+                    white_material.clone()
+                },
+                transform: Transform::from_xyz(x as f32 * 2.0, -TABLE_HEIGHT, z as f32 * 2.0),
+                ..default()
+            },));
+        }
+    }
+}
+
 fn setup_scene(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    todo!()
+    let cache = Cache::builder()
+        .progress_bar(Some(ProgressBar::Full))
+        // .offline(true) // Disable while server has https issues.
+        .build()
+        .expect("Failed to create the file cache");
+
+    let cache_options = Options {
+        subdir: Some("cache".to_string()),
+        ..default()
+    };
+    let mechaferris_hashed = cache
+        .cached_path_with_options(&format!("{BASE_ASSETS_URL}{BALANCEBOT}"), &cache_options)
+        .expect("Failed to download and cache balancebot.glb");
+    let mechaferris_path = mechaferris_hashed.parent().unwrap().join(BALANCEBOT);
+
+    create_symlink(
+        mechaferris_hashed.to_str().unwrap(),
+        mechaferris_path.to_str().unwrap(),
+    )
+    .expect("Failed to create symlink to balancebot.glb");
+
+    let skybox_path_hashed = cache
+        .cached_path_with_options(&format!("{BASE_ASSETS_URL}{SKYBOX}"), &cache_options)
+        .expect("Failed to download and cache skybox.ktx2");
+    let skybox_path = skybox_path_hashed.parent().unwrap().join(SKYBOX);
+    create_symlink(
+        skybox_path_hashed.to_str().unwrap(),
+        skybox_path.to_str().unwrap(),
+    )
+    .expect("Failed to create symlink to skybox.ktx2");
+
+    let diffuse_map_path_hashed = cache
+        .cached_path_with_options(&format!("{BASE_ASSETS_URL}{DIFFUSE_MAP}"), &cache_options)
+        .expect("Failed to download and cache diffuse_map.ktx2");
+    let diffuse_map_path = diffuse_map_path_hashed.parent().unwrap().join(DIFFUSE_MAP);
+    create_symlink(
+        diffuse_map_path_hashed.to_str().unwrap(),
+        diffuse_map_path.to_str().unwrap(),
+    )
+    .expect("Failed to create symlink to diffuse_map.ktx2");
+
+    // Load the resources
+    let scene_handle = asset_server.load(
+        GltfAssetLabel::Scene(0).from_asset(format!("{}#scene0", mechaferris_path.display())),
+    );
+    let skybox_handle = asset_server.load(skybox_path);
+    let diffuse_map_handle = asset_server.load(diffuse_map_path);
+    let specular_map_handle = skybox_handle.clone(); // some quirk
+
+    // Fiat Lux
+    commands.insert_resource(AmbientLight {
+        color: Color::srgb_u8(210, 220, 240),
+        brightness: 1.0,
+    });
+
+    // load the scene
+    commands.spawn(SceneBundle {
+        scene: scene_handle,
+        ..default()
+    });
+
+    // Spawn the camera
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_xyz(-1.0, 0.1, 1.5).looking_at(Vec3::ZERO, Vec3::Y),
+            camera: Camera {
+                hdr: true,
+                ..default()
+            },
+            ..default()
+        },
+        Skybox {
+            image: skybox_handle,
+            brightness: 1000.0,
+        },
+        EnvironmentMapLight {
+            diffuse_map: diffuse_map_handle,
+            specular_map: specular_map_handle,
+            intensity: 900.0,
+        },
+        ScreenSpaceReflectionsBundle {
+            settings: ScreenSpaceReflectionsSettings {
+                perceptual_roughness_threshold: 0.85, // Customize as needed
+                thickness: 0.01,
+                linear_steps: 128,
+                linear_march_exponent: 2.0,
+                bisection_steps: 8,
+                use_secant: true,
+            },
+            ..default()
+        },
+        Fxaa::default(),
+    ));
+
+    commands.spawn(PerfUiCompleteBundle::default());
+
+    // Add ground
+    ground_setup(&mut commands, &mut meshes, &mut materials);
 }
 
 fn setup_ui(mut commands: Commands) {
-    todo!()
+    #[cfg(target_os = "macos")]
+    let instructions = "WASD / QE\nControl-Click + Drag\nClick + Drag\nScrolling\nSpace\nR";
+    #[cfg(not(target_os = "macos"))]
+    let instructions = "WASD / QE\nShift-Click + Drag\nClick + Drag\nScrolling Wheel\nSpace\nR";
+
+    commands
+        .spawn((NodeBundle {
+            style: Style {
+                position_type: PositionType::Absolute,
+                bottom: Val::Px(5.0),
+                right: Val::Px(5.0),
+                padding: UiRect::new(Val::Px(15.0), Val::Px(15.0), Val::Px(10.0), Val::Px(10.0)),
+                column_gap: Val::Px(10.0),
+                flex_direction: FlexDirection::Row,
+                justify_content: JustifyContent::SpaceBetween,
+                border: UiRect::all(Val::Px(2.0)),
+                ..default()
+            },
+            background_color: Color::srgba(0.25, 0.41, 0.88, 0.7).into(),
+            border_color: Color::srgba(0.8, 0.8, 0.8, 0.7).into(),
+            border_radius: BorderRadius::all(Val::Px(10.0)),
+            ..default()
+        },))
+        .with_children(|parent| {
+            // Left column
+            parent.spawn(TextBundle::from_section(
+                "Move\nNavigation\nInteract\nZoom\nPause/Resume\nReset",
+                TextStyle {
+                    font_size: 12.0,
+                    color: Color::srgb(1.0, 0.8, 0.2), // Golden color
+                    ..default()
+                },
+            ));
+
+            // Right column
+            parent.spawn(TextBundle::from_section(
+                instructions,
+                TextStyle {
+                    font_size: 12.0,
+                    color: Color::WHITE,
+                    ..default()
+                },
+            ));
+        });
 }
 
 fn setup_entities(
@@ -79,14 +312,29 @@ fn setup_entities(
     mut materials: ResMut<Assets<StandardMaterial>>,
     query: Query<(Entity, &Name)>,
 ) {
-    todo!()
+    // TODO spawn mecharferris models
+
+    // Light
+    commands.spawn(PointLightBundle {
+        point_light: PointLight {
+            shadows_enabled: true,
+            ..default()
+        },
+        transform: Transform::from_xyz(2.0, 4.0, 2.0),
+        ..default()
+    });
 }
 
 fn toggle_simulation_state(
     mut state: ResMut<SimulationState>,
     keyboard_inout: Res<ButtonInput<KeyCode>>,
 ) {
-    todo!()
+    if keyboard_inout.just_pressed(KeyCode::Space) {
+        *state = match *state {
+            SimulationState::Running => SimulationState::Paused,
+            SimulationState::Paused => SimulationState::Running,
+        }
+    }
 }
 
 fn camera_control_system(
@@ -98,7 +346,78 @@ fn camera_control_system(
     time: Res<Time>,
     mouse_button_input: Res<ButtonInput<MouseButton>>,
 ) {
-    todo!()
+    let mut camera_transform = query.single_mut();
+    let focal_point = Vec3::ZERO; // Define the point to orbit around (usually the center of the scene)
+
+    // Calculate the direction vector from the camera to the focal point
+    let direction = camera_transform.translation - focal_point;
+    let radius = direction.length(); // Distance from the focal point
+
+    // Zoom with scroll
+    for ev in scroll_evr.read() {
+        let forward = camera_transform.forward();
+        let zoom_amount = ev.y * control.zoom_sensitivity * time.delta_seconds();
+        camera_transform.translation += forward * zoom_amount;
+    }
+
+    // Rotate the camera aroudn the focal point with right mouse button + drag
+    if mouse_button_input.pressed(MouseButton::Right) {
+        for ev in mouse_motion_evr.read() {
+            let yaw = Quat::from_rotation_y(-ev.delta.x * control.rotate_sensitivity);
+            let pitch = Quat::from_rotation_x(-ev.delta.y * control.rotate_sensitivity);
+
+            // Apply the rotation to the direction vector
+            let new_direction = yaw * pitch * direction;
+
+            // Update the camera position while maintaining the distance from the focal point
+            camera_transform.translation = focal_point + new_direction.normalize() * radius;
+
+            // Ensure the camera is always looking at the focal point
+            camera_transform.look_at(focal_point, Vec3::Y);
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    let mouse_button = MouseButton::Right;
+    #[cfg(not(target_os = "macos"))]
+    let mouse_button = MouseButton::Left;
+
+    if mouse_button_input.pressed(mouse_button)
+        && (keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight))
+    {
+        for ev in mouse_motion_evr.read() {
+            let right = camera_transform.right();
+            let up = camera_transform.up();
+            camera_transform.translation += right * -ev.delta.x * control.move_sensitivity;
+            camera_transform.translation += up * ev.delta.y * control.move_sensitivity;
+        }
+    }
+
+    let forward = if keys.pressed(KeyCode::KeyW) {
+        camera_transform.forward() * control.move_sensitivity
+    } else if keys.pressed(KeyCode::KeyS) {
+        camera_transform.back() * control.move_sensitivity
+    } else {
+        Vec3::ZERO
+    };
+
+    let strafe = if keys.pressed(KeyCode::KeyA) {
+        camera_transform.left() * control.move_sensitivity
+    } else if keys.pressed(KeyCode::KeyD) {
+        camera_transform.right() * control.move_sensitivity
+    } else {
+        Vec3::ZERO
+    };
+
+    let vertical = if keys.pressed(KeyCode::KeyQ) {
+        Vec3::Y * control.move_sensitivity
+    } else if keys.pressed(KeyCode::KeyE) {
+        Vec3::NEG_Y * control.move_sensitivity
+    } else {
+        Vec3::ZERO
+    };
+
+    camera_transform.translation += forward + strafe + vertical;
 }
 
 fn update_physics(state: Res<SimulationState>, mut time: ResMut<Time<Physics>>) {
@@ -119,5 +438,26 @@ fn reset_sim(
         Option<&mut ExternalForce>,
     )>,
 ) {
-    todo!()
+    if !keys.just_pressed(KeyCode::KeyR) {
+        return;
+    }
+
+    for (base_component, femur_component, tibia_component, transform, ext_force) in query.iter_mut()
+    {
+        if let Some(mut ext_force) = ext_force {
+            ext_force.clear();
+        }
+        let Some(mut transform) = transform else {
+            continue;
+        };
+
+        if base_component.is_some()
+            || femur_component.is_some()
+            || tibia_component.is_some()
+            || tibia_component.is_some()
+        {
+            transform.translation = Vec3::ZERO;
+            transform.rotation = Quat::IDENTITY;
+        }
+    }
 }

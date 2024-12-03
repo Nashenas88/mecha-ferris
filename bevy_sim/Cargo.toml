@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-kinematics = { path = "../kinematics" }
 bevy = { version = "0.14.2", default-features = false, features = [
     "wayland",
     "default_font",
@@ -19,6 +18,7 @@ bevy = { version = "0.14.2", default-features = false, features = [
     "ktx2",
     "jpeg",
     "png",
+    "trace",
 ] }
 bevy_mod_picking = { version = "0.20.1", features = ["backend_avian"] }
 bevy_editor_pls = "0.10.0"
@@ -28,5 +28,19 @@ avian3d = { version = "0.1.2", default-features = false, features = [
     "debug-plugin",
     "parallel",
 ] }
-parry3d = { version = "0.17.2" }
-cached-path = { version = "0.6.1" }
+parry3d = "0.17.4"
+cached-path = "0.6.1"
+tracing = "0.1.41"
+log = "0.4.14"
+iyes_perf_ui = "0.3"
+kinematics = { path = "../kinematics" }
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = true
+opt-level = 3
+codegen-units = 1
+incremental = false
+debug = false

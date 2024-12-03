@@ -31,3 +31,4 @@ simulator/test.sh
 # Profiling data
 *.profraw
 lcov.info
+trace*.json
