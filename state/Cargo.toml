@@ -7,8 +7,8 @@ edition = "2021"
 
 [dependencies]
 defmt = { version = "0.3", optional = true }
-nalgebra = { version = "0.32.2", default-features = false, features = ["libm"] }
-serde = { version = "1.0.193", default-features = false, features = ["derive"] }
+nalgebra = { version = "0.33.1", default-features = false, features = ["libm"] }
+serde = { version = "1.0.213", default-features = false, features = ["derive"] }
 
 [features]
 default = []

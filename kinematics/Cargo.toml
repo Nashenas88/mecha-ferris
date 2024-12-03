@@ -7,14 +7,15 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-nalgebra = { version = "0.32.2", default-features = false, features = ["libm"] }
+nalgebra = { version = "0.33.1", default-features = false, features = ["libm"] }
 defmt = { version = "0.3", optional = true }
 num-traits = { version = "0.2", default-features = false }
 state = { path = "../state" }
+paste = "1.0.15"
 
 [dev-dependencies]
 approx = "0.5.1"
-proptest = "1.0.0"
+proptest = "1.5.0"
 
 [features]
 default = []
